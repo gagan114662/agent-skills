@@ -1,3 +1,6 @@
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
+
 /**
  * Outcome-first onboarding deliverable (issue #633).
  *
@@ -60,6 +63,14 @@ const MAX_HTML_BYTES = 512 * 1024;
 const MAX_TEXT_CHARS = 220;
 const MAX_CTA_COUNT = 5;
 const MAX_KEYWORDS = 6;
+const MAX_REDIRECTS = 5;
+
+export interface ResolvedHostAddress {
+  address: string;
+  family?: number;
+}
+
+export type HostResolver = (hostname: string) => Promise<readonly ResolvedHostAddress[]>;
 
 export type SiteSnapshotReader = (business: DeliverableBusiness) => Promise<SiteSnapshot | null>;
 
@@ -102,6 +113,169 @@ function isBlockedHost(host: string): boolean {
   return false;
 }
 
+async function defaultResolveHost(hostname: string): Promise<ResolvedHostAddress[]> {
+  return dnsLookup(hostname, { all: true, verbatim: true });
+}
+
+function normalizeHost(hostname: string): string {
+  return hostname.trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+}
+
+function extractRawAbsoluteHostname(rawUrl: string): string | null {
+  const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(rawUrl.trim());
+  if (!scheme) return null;
+  const authority = rawUrl.trim().slice(scheme[0].length).split(/[/?#]/, 1)[0] ?? "";
+  const hostPort = authority.split("@").at(-1) ?? "";
+  if (hostPort.startsWith("[")) {
+    const end = hostPort.indexOf("]");
+    return end > 0 ? hostPort.slice(1, end) : hostPort;
+  }
+  const colonCount = (hostPort.match(/:/g) ?? []).length;
+  return colonCount === 1 ? hostPort.slice(0, hostPort.lastIndexOf(":")) : hostPort;
+}
+
+function isSuspiciousNumericHostLiteral(rawHostname: string): boolean {
+  const host = normalizeHost(rawHostname);
+  if (host === "") return true;
+  if (host.includes(":")) return false;
+  if (host.startsWith("0x") || /^[0-9]+$/.test(host)) return true;
+
+  const labels = host.split(".");
+  const allNumericLike = labels.every((label) => /^(?:0x[0-9a-f]+|[0-9]+)$/i.test(label));
+  if (!allNumericLike) return false;
+  if (labels.length !== 4) return true;
+  return labels.some((label) => {
+    if (!/^[0-9]+$/.test(label)) return true;
+    if (label.length > 1 && label.startsWith("0")) return true;
+    const value = Number(label);
+    return !Number.isInteger(value) || value < 0 || value > 255;
+  });
+}
+
+function parseIpv4(address: string): [number, number, number, number] | null {
+  const parts = address.split(".");
+  if (parts.length !== 4) return null;
+  const bytes = parts.map((part) => Number(part));
+  if (bytes.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+  return bytes as [number, number, number, number];
+}
+
+function isBlockedIpv4(address: string): boolean {
+  const bytes = parseIpv4(address);
+  if (!bytes) return true;
+  const [a, b, c] = bytes;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 192 && b === 0 && c === 0) return true;
+  if (a === 192 && b === 0 && c === 2) return true;
+  if (a === 192 && b === 88 && c === 99) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 198 && b === 51 && c === 100) return true;
+  if (a === 203 && b === 0 && c === 113) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function expandIpv6(address: string): number[] | null {
+  const zoneIndex = address.indexOf("%");
+  const withoutZone = zoneIndex >= 0 ? address.slice(0, zoneIndex) : address;
+  const lower = withoutZone.toLowerCase();
+  const ipv4Match = lower.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  let normalized = lower;
+  const embeddedIpv4 = ipv4Match?.[1] ? parseIpv4(ipv4Match[1]) : null;
+  if (embeddedIpv4) {
+    const [a, b, c, d] = embeddedIpv4;
+    normalized =
+      lower.slice(0, -ipv4Match[1].length) + ((a << 8) | b).toString(16) + ":" + ((c << 8) | d).toString(16);
+  }
+
+  const halves = normalized.split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":").filter(Boolean) : [];
+  const right = halves[1] ? halves[1].split(":").filter(Boolean) : [];
+  const missing = halves.length === 2 ? 8 - left.length - right.length : 0;
+  if (missing < 0) return null;
+  const groups = halves.length === 2 ? [...left, ...Array<string>(missing).fill("0"), ...right] : left;
+  if (groups.length !== 8) return null;
+  const words = groups.map((group) => Number.parseInt(group, 16));
+  if (words.some((word) => !Number.isInteger(word) || word < 0 || word > 0xffff)) return null;
+  const bytes: number[] = [];
+  for (const word of words) {
+    bytes.push((word >> 8) & 0xff, word & 0xff);
+  }
+  return bytes;
+}
+
+function isBlockedIpv6(address: string): boolean {
+  const bytes = expandIpv6(address);
+  if (!bytes) return true;
+  const first = bytes[0] ?? 0;
+  const second = bytes[1] ?? 0;
+  const allZero = bytes.every((byte) => byte === 0);
+  const loopback = bytes.slice(0, 15).every((byte) => byte === 0) && bytes[15] === 1;
+  const ipv4Mapped = bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
+  const ipv4Compatible = bytes.slice(0, 12).every((byte) => byte === 0) && !allZero;
+  if (ipv4Mapped || ipv4Compatible) {
+    const embedded = bytes.slice(12, 16).join(".");
+    return isBlockedIpv4(embedded);
+  }
+  if (allZero || loopback) return true;
+  if ((first & 0xfe) === 0xfc) return true;
+  if (first === 0xfe && (second & 0xc0) === 0x80) return true;
+  if (first === 0xff) return true;
+  if (first === 0x20 && second === 0x01 && bytes[2] === 0x0d && bytes[3] === 0xb8) return true;
+  return false;
+}
+
+function isBlockedAddress(address: string): boolean {
+  const family = isIP(address);
+  if (family === 4) return isBlockedIpv4(address);
+  if (family === 6) return isBlockedIpv6(address);
+  return true;
+}
+
+function isAllowedWebPort(url: URL): boolean {
+  if (url.port === "") return true;
+  if (url.protocol === "http:" && url.port === "80") return true;
+  if (url.protocol === "https:" && url.port === "443") return true;
+  return false;
+}
+
+async function validateFetchUrl(rawUrl: string, resolver: HostResolver, base?: URL): Promise<URL | null> {
+  const rawHost = extractRawAbsoluteHostname(rawUrl);
+  if (rawHost && isSuspiciousNumericHostLiteral(rawHost)) return null;
+
+  let url: URL;
+  try {
+    url = base ? new URL(rawUrl, base) : new URL(rawUrl);
+  } catch {
+    return null;
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  if (!isAllowedWebPort(url)) return null;
+
+  const hostname = normalizeHost(url.hostname);
+  if (hostname === "" || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local")) {
+    return null;
+  }
+
+  if (isSuspiciousNumericHostLiteral(hostname)) return null;
+  if (isIP(hostname)) return isBlockedAddress(hostname) ? null : url;
+
+  let resolved: readonly ResolvedHostAddress[];
+  try {
+    resolved = await resolver(hostname);
+  } catch {
+    return null;
+  }
+  if (resolved.length === 0) return null;
+  return resolved.some(({ address }) => isBlockedAddress(address)) ? null : url;
+}
+
 /** Title-case the host's first label into a brand name, stripping anything not letter/number/space/hyphen. */
 export function brandNameFromHost(host: string): string {
   const label = host.split(".")[0]?.replace(/[^a-z0-9- ]/gi, "").replace(/-+/g, " ").trim() ?? "";
@@ -116,34 +290,47 @@ export function brandNameFromHost(host: string): string {
 export async function readSiteSnapshot(
   business: DeliverableBusiness,
   fetchImpl: typeof fetch = fetch,
+  resolver: HostResolver = defaultResolveHost,
 ): Promise<SiteSnapshot | null> {
   const primary = business.url;
   const fallback = primary.replace(/^https:/, "http:");
   for (const url of primary === fallback ? [primary] : [primary, fallback]) {
-    const snapshot = await fetchSnapshotUrl(url, fetchImpl);
+    const snapshot = await fetchSnapshotUrl(url, fetchImpl, resolver);
     if (snapshot) return snapshot;
   }
   return null;
 }
 
-async function fetchSnapshotUrl(url: string, fetchImpl: typeof fetch): Promise<SiteSnapshot | null> {
+async function fetchSnapshotUrl(url: string, fetchImpl: typeof fetch, resolver: HostResolver): Promise<SiteSnapshot | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        "User-Agent": "ipop-onboarding-site-reader/1.0",
-      },
-    });
+    let current = await validateFetchUrl(url, resolver);
+    if (!current) return null;
+    let res: Response | null = null;
+    for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+      res = await fetchImpl(current.href, {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "User-Agent": "ipop-onboarding-site-reader/1.0",
+        },
+      });
+      if (res.status < 300 || res.status > 399) break;
+      const location = res.headers.get("location");
+      if (!location || redirectCount === MAX_REDIRECTS) return null;
+      const next = await validateFetchUrl(location, resolver, current);
+      if (!next) return null;
+      current = next;
+    }
+    if (!res) return null;
     if (!res.ok) return null;
     const contentType = res.headers.get("content-type") ?? "";
     if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) return null;
     const html = (await res.text().catch(() => "")).slice(0, MAX_HTML_BYTES);
-    return parseSiteSnapshot(res.url || url, res.status, html);
+    return parseSiteSnapshot(res.url || current.href, res.status, html);
   } catch {
     return null;
   } finally {
@@ -191,16 +378,27 @@ function decodeEntities(text: string): string {
     });
 }
 
+function isControlChar(char: string): boolean {
+  const code = char.codePointAt(0) ?? 0;
+  return code <= 0x1f || code === 0x7f;
+}
+
+function replaceControlChars(text: string): string {
+  return Array.from(text, (char) => (isControlChar(char) ? " " : char)).join("");
+}
+
 function cleanText(text: string, max = MAX_TEXT_CHARS): string {
-  return decodeEntities(text)
-    .replace(/[\x00-\x1f\x7f]+/g, " ")
+  return replaceControlChars(decodeEntities(text))
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
 }
 
 function sanitizeUrl(url: string): string {
-  return url.replace(/[\x00-\x1f\x7f\s]+/g, "").slice(0, 300);
+  return Array.from(url)
+    .filter((char) => !isControlChar(char) && char.trim() !== "")
+    .join("")
+    .slice(0, 300);
 }
 
 function extractTitle(html: string): string | undefined {
@@ -247,8 +445,8 @@ function extractKeywords(text: string): string[] {
   const stop = new Set(["the", "and", "for", "with", "your", "you", "that", "this", "from", "into", "are", "our", "their"]);
   const words = cleanText(text, 800)
     .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((word) => word.length > 3 && !stop.has(word));
+    .split(/[^\p{L}\p{N}\p{M}]+/u)
+    .filter((word) => (/\p{Script=Han}/u.test(word) ? Array.from(word).length >= 2 : word.length > 3) && !stop.has(word));
   const counts = new Map<string, number>();
   for (const word of words) counts.set(word, (counts.get(word) ?? 0) + 1);
   return [...counts.entries()]
