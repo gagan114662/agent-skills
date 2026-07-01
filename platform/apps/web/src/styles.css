@@ -9589,10 +9589,6 @@ select:focus-visible {
   border-color: color-mix(in srgb, #bdf58b 48%, var(--ed-border));
   color: #bdf58b;
 }
-.everyday-dashboard__metric small[data-proof-kind="dogfood"] {
-  border-color: color-mix(in srgb, var(--ed-pop) 48%, var(--ed-border));
-  color: var(--ed-pop);
-}
 .everyday-dashboard__metric small[data-proof-kind="sample"] {
   border-color: color-mix(in srgb, #ffe082 44%, var(--ed-border));
   color: #ffe082;
@@ -10717,6 +10713,10 @@ select:focus-visible {
   content: "";
   position: absolute;
   display: block;
+  transition:
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s var(--o-ease),
+    filter 0.22s var(--o-ease);
 }
 .onboard-door-action[data-kind="login"] .onboard-door-action__mark::before {
   width: 62%;
@@ -10793,6 +10793,35 @@ select:focus-visible {
   border-width: 8px 8px 0 0;
   border-color: #54ce35 transparent transparent;
   transform: rotate(-12deg);
+}
+.onboard-door-action[data-kind="login"]:hover .onboard-door-action__mark::before,
+.onboard-door-action[data-kind="login"]:focus-visible .onboard-door-action__mark::before {
+  animation: onboard-login-target 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.onboard-door-action[data-kind="login"]:hover .onboard-door-action__mark::after,
+.onboard-door-action[data-kind="login"]:focus-visible .onboard-door-action__mark::after {
+  transform: scale(0.72);
+  filter: brightness(1.18);
+}
+.onboard-door-action[data-kind="love"]:hover .onboard-door-action__mark::before,
+.onboard-door-action[data-kind="love"]:focus-visible .onboard-door-action__mark::before {
+  animation: onboard-love-beat 0.78s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.onboard-door-action[data-kind="love"]:hover .onboard-door-action__mark::after,
+.onboard-door-action[data-kind="love"]:focus-visible .onboard-door-action__mark::after {
+  transform: translate(-9px, -8px) rotate(45deg) scale(1.12);
+}
+.onboard-door-action[data-kind="dashboard"]:hover .onboard-door-action__mark::before,
+.onboard-door-action[data-kind="dashboard"]:focus-visible .onboard-door-action__mark::before {
+  animation: onboard-dashboard-snap 0.72s steps(3, end) both;
+}
+.onboard-door-action[data-kind="start"]:hover .onboard-door-action__mark::before,
+.onboard-door-action[data-kind="start"]:focus-visible .onboard-door-action__mark::before {
+  animation: onboard-start-bubble 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.onboard-door-action[data-kind="start"]:hover .onboard-door-action__mark::after,
+.onboard-door-action[data-kind="start"]:focus-visible .onboard-door-action__mark::after {
+  transform: translate(6px, -3px) rotate(-18deg);
 }
 .onboard-message-channels {
   display: grid;
@@ -11488,6 +11517,10 @@ select:focus-visible {
   content: "";
   position: absolute;
   display: block;
+  transition:
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s var(--o-ease),
+    filter 0.22s var(--o-ease);
 }
 .onboard-marketing__detail {
   position: absolute;
@@ -11539,6 +11572,9 @@ select:focus-visible {
   border-radius: 999px;
   background: #ff6a9d;
   box-shadow: 13px -12px 0 -4px #fff879;
+}
+.onboard-marketing__item[data-kind="market"]:hover .onboard-marketing__mark::after {
+  animation: onboard-map-pin 0.76s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .onboard-marketing__item[data-kind="brief"] .onboard-marketing__mark {
   border-radius: 999px;
@@ -11607,6 +11643,9 @@ select:focus-visible {
   background-repeat: no-repeat;
   box-shadow: inset 0 0 0 2px #111;
 }
+.onboard-marketing__item[data-kind="site"]:hover .onboard-marketing__mark::before {
+  transform: translateY(-4px);
+}
 .onboard-marketing__item[data-kind="email"] .onboard-marketing__mark {
   width: clamp(58px, 5.4vw, 92px);
   height: clamp(42px, 3.95vw, 68px);
@@ -11642,6 +11681,9 @@ select:focus-visible {
   background: #ff6a9d;
   box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.62);
 }
+.onboard-marketing__item[data-kind="email"]:hover .onboard-marketing__mark::after {
+  animation: onboard-email-ping 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
 .onboard-marketing__item[data-kind="insight"] .onboard-marketing__mark {
   border-radius: 999px;
   background:
@@ -11666,6 +11708,9 @@ select:focus-visible {
   border-radius: 999px 999px 42% 42%;
   background: #fff879;
   box-shadow: 0 0 0 3px #111;
+}
+.onboard-marketing__item[data-kind="insight"]:hover .onboard-marketing__mark::before {
+  animation: onboard-insight-blink 0.82s ease-in-out both;
 }
 .onboard-marketing__item[data-kind="insight"] .onboard-marketing__mark::after {
   width: 24%;
@@ -11701,6 +11746,12 @@ select:focus-visible {
   border-radius: 4px;
   background: #ff7c3b;
 }
+.onboard-marketing__item[data-kind="creative"]:hover .onboard-marketing__mark::before {
+  transform: translateX(5px);
+}
+.onboard-marketing__item[data-kind="creative"]:hover .onboard-marketing__mark::after {
+  transform: translateX(-6px);
+}
 .onboard-marketing__item[data-kind="seo"] .onboard-marketing__mark {
   background:
     linear-gradient(180deg, #fff879 0 70%, #f2e65c 70% 100%);
@@ -11726,6 +11777,12 @@ select:focus-visible {
   background: #111;
   transform: rotate(45deg);
 }
+.onboard-marketing__item[data-kind="seo"]:hover .onboard-marketing__mark::before {
+  transform: translate(-5px, -3px) scale(1.08);
+}
+.onboard-marketing__item[data-kind="seo"]:hover .onboard-marketing__mark::after {
+  transform: rotate(45deg) translate(5px, 2px);
+}
 .onboard-marketing__item[data-kind="social"] .onboard-marketing__mark {
   background: repeating-linear-gradient(0deg, #ff74a2 0 10px, #ff9ebc 10px 20px);
   border-radius: 14px;
@@ -11744,6 +11801,9 @@ select:focus-visible {
   background:
     radial-gradient(circle, #fff 0 4px, transparent 5px) 0 0 / 18px 18px;
   opacity: 0.76;
+}
+.onboard-marketing__item[data-kind="social"]:hover .onboard-marketing__mark::before {
+  animation: onboard-social-pop 0.7s steps(2, end) both;
 }
 .onboard-marketing__item[data-kind="social"] .onboard-marketing__mark::after {
   inset: 22%;
@@ -11774,6 +11834,9 @@ select:focus-visible {
   transform: rotate(18deg);
   opacity: 0.7;
 }
+.onboard-marketing__item[data-kind="paid"]:hover .onboard-marketing__mark::after {
+  animation: onboard-paid-needle 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
 .onboard-marketing__item[data-kind="approval"] .onboard-marketing__mark {
   background: #d7f6ff;
   border-radius: 32px 32px 20px 20px;
@@ -11789,6 +11852,9 @@ select:focus-visible {
   border-top: 0;
   border-left: 0;
   transform: rotate(42deg) translate(-2px, -6px);
+}
+.onboard-marketing__item[data-kind="approval"]:hover .onboard-marketing__mark::before {
+  animation: onboard-check-land 0.66s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .onboard-marketing__item[data-kind="analytics"] .onboard-marketing__mark {
   background: radial-gradient(circle at 75% 25%, #111 0 16%, transparent 17%), #d7b28b;
@@ -11815,6 +11881,122 @@ select:focus-visible {
     linear-gradient(#111 0 0) 50% 58% / 70% 3px,
     linear-gradient(#111 0 0) 50% 76% / 44% 3px;
   background-repeat: no-repeat;
+}
+.onboard-marketing__item[data-kind="receipt"]:hover .onboard-marketing__mark::before {
+  transform: translateY(-4px);
+}
+
+@keyframes onboard-login-target {
+  0% {
+    transform: scale(0.9) rotate(0deg);
+  }
+  62% {
+    transform: scale(1.12) rotate(12deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes onboard-love-beat {
+  0%, 100% {
+    transform: rotate(45deg) scale(1);
+  }
+  45% {
+    transform: rotate(45deg) scale(1.16);
+  }
+}
+
+@keyframes onboard-dashboard-snap {
+  0% {
+    filter: hue-rotate(0deg) saturate(1);
+    transform: translateY(0);
+  }
+  50% {
+    filter: hue-rotate(18deg) saturate(1.32);
+    transform: translateY(-3px);
+  }
+  100% {
+    filter: hue-rotate(0deg) saturate(1.08);
+    transform: translateY(0);
+  }
+}
+
+@keyframes onboard-start-bubble {
+  0%, 100% {
+    transform: translateX(0) scale(1);
+  }
+  52% {
+    transform: translateX(4px) scale(1.12);
+  }
+}
+
+@keyframes onboard-map-pin {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  48% {
+    transform: translateY(-8px) scale(1.18);
+  }
+}
+
+@keyframes onboard-email-ping {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  65% {
+    transform: scale(1.34);
+    opacity: 0.86;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes onboard-insight-blink {
+  0%, 100% {
+    transform: scaleY(1);
+  }
+  45% {
+    transform: scaleY(0.78) translateY(3px);
+  }
+}
+
+@keyframes onboard-social-pop {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.76;
+  }
+  50% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@keyframes onboard-paid-needle {
+  0%, 100% {
+    transform: rotate(18deg);
+  }
+  58% {
+    transform: rotate(48deg);
+  }
+}
+
+@keyframes onboard-check-land {
+  0% {
+    transform: rotate(42deg) translate(-10px, -14px) scale(0.88);
+    opacity: 0.62;
+  }
+  70% {
+    transform: rotate(42deg) translate(0, -5px) scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(42deg) translate(-2px, -6px) scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes onboard-icon-bob {
@@ -11878,7 +12060,21 @@ select:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .onboard-door-action,
+  .onboard-door-action[data-kind="login"]:hover .onboard-door-action__mark::before,
+  .onboard-door-action[data-kind="login"]:focus-visible .onboard-door-action__mark::before,
+  .onboard-door-action[data-kind="love"]:hover .onboard-door-action__mark::before,
+  .onboard-door-action[data-kind="love"]:focus-visible .onboard-door-action__mark::before,
+  .onboard-door-action[data-kind="dashboard"]:hover .onboard-door-action__mark::before,
+  .onboard-door-action[data-kind="dashboard"]:focus-visible .onboard-door-action__mark::before,
+  .onboard-door-action[data-kind="start"]:hover .onboard-door-action__mark::before,
+  .onboard-door-action[data-kind="start"]:focus-visible .onboard-door-action__mark::before,
   .onboard-marketing__item,
+  .onboard-marketing__item[data-kind="market"]:hover .onboard-marketing__mark::after,
+  .onboard-marketing__item[data-kind="email"]:hover .onboard-marketing__mark::after,
+  .onboard-marketing__item[data-kind="insight"]:hover .onboard-marketing__mark::before,
+  .onboard-marketing__item[data-kind="social"]:hover .onboard-marketing__mark::before,
+  .onboard-marketing__item[data-kind="paid"]:hover .onboard-marketing__mark::after,
+  .onboard-marketing__item[data-kind="approval"]:hover .onboard-marketing__mark::before,
   .onboard-sunscape__sun,
   .onboard-sunscape__ray,
   .onboard[data-phase="door"]::before,
@@ -11888,6 +12084,10 @@ select:focus-visible {
   .onboard-door-action,
   .onboard-door-action:hover,
   .onboard-door-action:focus-visible,
+  .onboard-door-action:hover .onboard-door-action__mark::before,
+  .onboard-door-action:hover .onboard-door-action__mark::after,
+  .onboard-door-action:focus-visible .onboard-door-action__mark::before,
+  .onboard-door-action:focus-visible .onboard-door-action__mark::after,
   .onboard-message-channel,
   .onboard-message-channel:hover,
   .onboard-message-channel:focus-visible,
@@ -11898,6 +12098,8 @@ select:focus-visible {
   .onboard-message-channel:hover .onboard-message-channel__mark,
   .onboard-message-channel:focus-visible .onboard-message-channel__mark,
   .onboard-marketing__item:hover .onboard-marketing__mark,
+  .onboard-marketing__item:hover .onboard-marketing__mark::before,
+  .onboard-marketing__item:hover .onboard-marketing__mark::after,
   .onboard-marketing__item[data-kind="brief"]:hover .onboard-marketing__mark::before,
   .onboard-marketing__item[data-kind="brief"]:hover .onboard-marketing__mark::after,
   .onboard-marketing__item[data-kind="paid"]:hover .onboard-marketing__mark,

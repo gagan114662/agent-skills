@@ -220,10 +220,6 @@ function mergeDirectory(
   return next;
 }
 
-// Vowels approximate "every display name" for the member ILIKE search, since the server exposes
-// no list-all-members endpoint (see spec §Known server constraints).
-const ROSTER_PROBES = ["a", "e", "i", "o", "u", "y"];
-
 const INITIAL_APPROVALS: ApprovalsState = {
   status: "pending",
   requests: [],
@@ -434,6 +430,8 @@ export function createStore({ api, realtime }: StoreDeps): Store {
   // single `realtime.on(onEvent)` in loadWorkspace); `onEvent` re-emits every event to these listeners so a
   // view can react live (e.g. refetch the #147 mission-control strip) WITHOUT opening a second socket.
   const realtimeListeners = new Set<(event: ServerEvent) => void>();
+  let bootstrapInFlight: Promise<void> | null = null;
+  const channelMessageLoads = new Map<string, Promise<Message[]>>();
 
   function getQueue(channelId: string): SessionQueue {
     return state.queues[channelId] ?? emptyQueue();
@@ -594,8 +592,8 @@ export function createStore({ api, realtime }: StoreDeps): Store {
 
   /** How many trailing log lines the Run tab keeps from a live stream (mirrors the server tail). */
   const RUN_LOG_TAIL = 200;
-  /** How many recent channel messages the web UI asks the server for on channel open/poll (#684). */
-  const CHANNEL_HISTORY_TAIL_LIMIT = 500;
+  /** Recent channel tail loaded on open/poll. Older history should be paged explicitly, not fetched on boot. */
+  const CHANNEL_HISTORY_TAIL_LIMIT = 80;
 
   /** Refresh the pending bucket: always updates the nav badge; updates rows when pending is shown.
    * Best-effort — a failure only zeroes the badge, never breaks login or a decision. */
@@ -631,14 +629,20 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     if (state.approvals.activeRequest?.id === requestId) await store.openRequest(requestId);
   }
 
-  async function warmDirectory(workspaceId: string): Promise<void> {
-    try {
-      const batches = await Promise.all(ROSTER_PROBES.map((q) => api.searchMembers(workspaceId, q)));
-      const hits = batches.flat();
-      if (hits.length) set({ directory: mergeDirectory(state.directory, hits) });
-    } catch {
-      // Best-effort: a roster miss only degrades author labels to id fallbacks.
-    }
+  function agentDirectoryEntries(agents: AgentProfile[]): DirectoryEntry[] {
+    return agents.map((agent) => ({ id: agent.id, kind: "agent", displayName: agent.name }));
+  }
+
+  async function listChannelMessagesOnce(channelId: string): Promise<Message[]> {
+    const current = channelMessageLoads.get(channelId);
+    if (current) return current;
+    const request = api.listMessages(channelId, CHANNEL_HISTORY_TAIL_LIMIT);
+    request.then(
+      () => channelMessageLoads.delete(channelId),
+      () => channelMessageLoads.delete(channelId),
+    );
+    channelMessageLoads.set(channelId, request);
+    return request;
   }
 
   async function loadWorkspace(identity: Identity): Promise<void> {
@@ -663,11 +667,10 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       channels,
       activeChannelId: selected?.id ?? state.activeChannelId,
       agents,
-      directory: mergeDirectory(state.directory, [selfEntry]),
+      directory: mergeDirectory(state.directory, [selfEntry, ...agentDirectoryEntries(agents)]),
       presence: { ...state.presence, [identity.memberId]: "online" },
     });
 
-    void warmDirectory(identity.workspaceId);
     api
       .listMyMentions()
       .then((items) => set({ unreadMentions: items.length }))
@@ -690,14 +693,20 @@ export function createStore({ api, realtime }: StoreDeps): Store {
     },
 
     async bootstrap() {
-      try {
-        const identity = await api.me();
-        await loadWorkspace(identity);
-      } catch (err) {
-        // No backend wired (standalone deploy / API down) → show the "API not connected" state.
-        // A real API answering "unauthorized" (or any other error) just means we need to sign in.
-        set({ phase: isApiUnavailable(err) ? "offline" : "anon", identity: null });
-      }
+      if (bootstrapInFlight) return bootstrapInFlight;
+      bootstrapInFlight = (async () => {
+        try {
+          const identity = await api.me();
+          await loadWorkspace(identity);
+        } catch (err) {
+          // No backend wired (standalone deploy / API down) → show the "API not connected" state.
+          // A real API answering "unauthorized" (or any other error) just means we need to sign in.
+          set({ phase: isApiUnavailable(err) ? "offline" : "anon", identity: null });
+        } finally {
+          bootstrapInFlight = null;
+        }
+      })();
+      return bootstrapInFlight;
     },
 
     async login(email, password) {
@@ -726,13 +735,13 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       set({ activeChannelId: channelId, thread: null });
       saveWorkspaceSelection(workspaceId, memberId, channelId);
       realtime.subscribe(channelId);
-      const messages = await api.listMessages(channelId, CHANNEL_HISTORY_TAIL_LIMIT);
+      const messages = await listChannelMessagesOnce(channelId);
       set({ messagesByChannel: { ...state.messagesByChannel, [channelId]: messages } });
     },
 
     async refreshChannelMessages(channelId) {
       try {
-        const fetched = await api.listMessages(channelId, CHANNEL_HISTORY_TAIL_LIMIT);
+        const fetched = await listChannelMessagesOnce(channelId);
         // Upsert each fetched message into the existing list so a realtime/optimistic arrival is never dropped.
         let list = state.messagesByChannel[channelId] ?? [];
         for (const m of fetched) list = upsertMessage(list, m);

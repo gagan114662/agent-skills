@@ -9,6 +9,7 @@
  * #113 `infraBudgetStatus`. The dedupe state is NOT a database row — it is the open issue itself
  * (which is why #108 ships no migration): one outage → one issue → closed on recovery.
  */
+import { DEFAULT_PUBLIC_API_ORIGIN, DEFAULT_PUBLIC_APP_ORIGIN } from "../product-origins.js";
 
 /** A URL to watch + what "healthy" means for it. */
 export interface ProbeTarget {
@@ -151,12 +152,17 @@ export function decideAlertAction(
 export const DEFAULT_TARGETS: ProbeTarget[] = [
   {
     id: "api",
-    name: "api.ipop.ai",
-    url: "https://api.ipop.ai/readyz",
+    name: new URL(DEFAULT_PUBLIC_API_ORIGIN).hostname,
+    url: new URL("/readyz", DEFAULT_PUBLIC_API_ORIGIN).toString(),
     expectStatus: [200],
     expectBody: "ready",
   },
-  { id: "web", name: "ipop.ai", url: "https://ipop.ai/", expectStatus: [200] },
+  {
+    id: "web",
+    name: new URL(DEFAULT_PUBLIC_APP_ORIGIN).hostname,
+    url: new URL("/", DEFAULT_PUBLIC_APP_ORIGIN).toString(),
+    expectStatus: [200],
+  },
 ];
 
 /**

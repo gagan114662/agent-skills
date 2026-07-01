@@ -26,7 +26,13 @@ describe("loadEnv profile wiring (#69 — explicit env > profile preset > built-
   });
 
   it("RELOAD_PROFILE=prod flips runtime + harness in one switch", () => {
-    const env = loadEnv({ RELOAD_PROFILE: "prod" }).agent;
+    const env = loadEnv({
+      RELOAD_PROFILE: "prod",
+      DATABASE_URL: "postgres://prod.example/reload",
+      REDIS_URL: "redis://prod.example:6379",
+      DEPLOY_PROVIDER: "vercel",
+      BILLING_PROVIDER: "stripe",
+    } as NodeJS.ProcessEnv).agent;
     expect(env.profile).toBe("prod");
     expect(env.runtime).toBe("sandbox");
     expect(env.harness).toBe("codex");
@@ -35,8 +41,13 @@ describe("loadEnv profile wiring (#69 — explicit env > profile preset > built-
   it("an explicit AGENT_RUNTIME / AGENT_HARNESS overrides the profile preset", () => {
     const env = loadEnv({
       RELOAD_PROFILE: "prod",
+      DATABASE_URL: "postgres://prod.example/reload",
+      REDIS_URL: "redis://prod.example:6379",
+      DEPLOY_PROVIDER: "vercel",
+      BILLING_PROVIDER: "stripe",
       AGENT_RUNTIME: "local",
       AGENT_HARNESS: "demo",
+      RELOAD_ALLOW_DEMO_HARNESS_IN_PROD: "1",
     }).agent;
     expect(env.profile).toBe("prod"); // reported as selected…
     expect(env.runtime).toBe("local"); // …but the explicit override wins

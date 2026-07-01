@@ -112,7 +112,7 @@ export function ConsoleEmptyState({
         <p className="firstrun__assembling">{copy.assembling}</p>
         <p className="firstrun__hint">
           {copy.connectHint}{" "}
-          <button className="firstrun__link" onClick={onConnect}>
+          <button className="firstrun__link" type="button" onClick={onConnect}>
             {copy.connectCta}
           </button>
         </p>
@@ -146,6 +146,7 @@ export function ConsoleEmptyState({
 
       <button
         className="btn btn--primary firstrun__cta"
+        type="button"
         onClick={claudeConnected ? onStart : onConnect}
         disabled={claudeConnected && (busy || held)}
       >

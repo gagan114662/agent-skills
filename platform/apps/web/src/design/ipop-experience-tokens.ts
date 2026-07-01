@@ -40,30 +40,46 @@ export const ipopExperienceTokens: IpopExperienceTokens = {
   motionEase: "cubic-bezier(0.22, 0.61, 0.36, 1)",
 };
 
-type ExperienceSurface = "onboarding" | "everyday";
+export const ipopExperienceLightTokens: IpopExperienceTokens = {
+  ...ipopExperienceTokens,
+  color: {
+    canvas: "#fff7b3",
+    surface: "rgba(255, 255, 255, 0.72)",
+    raised: "#fffdf0",
+    border: "rgba(17, 17, 17, 0.12)",
+    text: "#17120f",
+    textDim: "rgba(23, 18, 15, 0.66)",
+    accent: "#ff5470",
+    onAccent: "#2a0a12",
+  },
+};
+
+type ExperienceSurface = "onboarding" | "everyday" | "everydayLight";
 
 const PREFIX_BY_SURFACE: Record<ExperienceSurface, string> = {
   onboarding: "o",
   everyday: "ed",
+  everydayLight: "ed",
 };
 
 export function experienceTokenStyle(surface: ExperienceSurface): CSSProperties {
   const prefix = PREFIX_BY_SURFACE[surface];
+  const tokens = surface === "everydayLight" ? ipopExperienceLightTokens : ipopExperienceTokens;
   return {
-    [`--${prefix}-canvas`]: ipopExperienceTokens.color.canvas,
-    [`--${prefix}-surface`]: ipopExperienceTokens.color.surface,
-    [`--${prefix}-raised`]: ipopExperienceTokens.color.raised,
-    [`--${prefix}-border`]: ipopExperienceTokens.color.border,
-    [`--${prefix}-text`]: ipopExperienceTokens.color.text,
-    [`--${prefix}-text-dim`]: ipopExperienceTokens.color.textDim,
-    [`--${prefix}-pop`]: ipopExperienceTokens.color.accent,
+    [`--${prefix}-canvas`]: tokens.color.canvas,
+    [`--${prefix}-surface`]: tokens.color.surface,
+    [`--${prefix}-raised`]: tokens.color.raised,
+    [`--${prefix}-border`]: tokens.color.border,
+    [`--${prefix}-text`]: tokens.color.text,
+    [`--${prefix}-text-dim`]: tokens.color.textDim,
+    [`--${prefix}-pop`]: tokens.color.accent,
     ...(surface === "onboarding"
-      ? { "--o-pop-ink": ipopExperienceTokens.color.onAccent }
-      : { "--ed-on-pop": ipopExperienceTokens.color.onAccent }),
-    [`--${prefix}-serif`]: ipopExperienceTokens.typography.serif,
-    [`--${prefix}-sans`]: ipopExperienceTokens.typography.sans,
-    [`--${prefix}-radius`]: ipopExperienceTokens.radius,
-    [`--${prefix}-gap`]: ipopExperienceTokens.gap,
-    [`--${prefix}-ease`]: ipopExperienceTokens.motionEase,
+      ? { "--o-pop-ink": tokens.color.onAccent }
+      : { "--ed-on-pop": tokens.color.onAccent }),
+    [`--${prefix}-serif`]: tokens.typography.serif,
+    [`--${prefix}-sans`]: tokens.typography.sans,
+    [`--${prefix}-radius`]: tokens.radius,
+    [`--${prefix}-gap`]: tokens.gap,
+    [`--${prefix}-ease`]: tokens.motionEase,
   } as CSSProperties;
 }

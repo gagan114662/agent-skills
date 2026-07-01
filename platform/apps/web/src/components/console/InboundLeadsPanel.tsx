@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client.js";
 import type { InboundLeadDto, InboundLeadStatus } from "../../api/types.js";
 import { CONTACT } from "../../brand.js";
+import { DEFAULT_PUBLIC_WEB_ORIGIN } from "../../product-origins.js";
 
 const STATUSES: InboundLeadStatus[] = ["new", "working", "converted", "archived"];
 
@@ -34,7 +35,7 @@ function trackedBookingHref(lead: InboundLeadDto): string {
 }
 
 function trackedBookingProofUrl(lead: InboundLeadDto): string {
-  return new URL(trackedBookingHref(lead), "https://ipop.ai").toString();
+  return new URL(trackedBookingHref(lead), DEFAULT_PUBLIC_WEB_ORIGIN).toString();
 }
 
 function proofDraftHref(lead: InboundLeadDto): string | null {

@@ -16,6 +16,7 @@
  * writes, sends, or spends. The crawled bytes are untrusted DATA handled exclusively by the distill core.
  */
 
+import { DEFAULT_PUBLIC_APP_ORIGIN } from "../../product-origins.js";
 import { type FetchedPage, MAX_PAGES, MAX_URL_CHARS } from "./distill.js";
 
 /** Per-request fetch timeout (ms) — a slow/hung page can never stall a launch. */
@@ -100,7 +101,7 @@ export class LiveSiteReaderProvider implements SiteReaderProvider {
         method: "GET",
         redirect: "follow",
         signal: controller.signal,
-        headers: { Accept: "text/html", "User-Agent": "ipop-site-reader/1.0 (+https://ipop.ai)" },
+        headers: { Accept: "text/html", "User-Agent": `ipop-site-reader/1.0 (+${DEFAULT_PUBLIC_APP_ORIGIN})` },
       });
       const body = (await res.text().catch(() => "")).slice(0, MAX_PAGE_BYTES);
       return { url: url.slice(0, MAX_URL_CHARS), status: res.status, html: body };

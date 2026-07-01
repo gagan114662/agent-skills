@@ -270,6 +270,9 @@ describe("store bootstrap + realtime", () => {
   });
 
   it("an authenticated bootstrap loads channels, selects the first, and subscribes", async () => {
+    (env.deps.api.listAgents as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { id: "agent-scout", name: "Scout", framework: null, ownerUserId: null, deactivatedAt: null, createdAt: "2026-01-01T00:00:00.000Z" },
+    ]);
     const store = createStore(env.deps);
     await store.bootstrap();
 
@@ -279,11 +282,33 @@ describe("store bootstrap + realtime", () => {
     expect(s.channels).toHaveLength(2);
     expect(s.activeChannelId).toBe("c1");
     expect(s.messagesByChannel.c1?.map((m) => m.id)).toEqual(["m1"]);
-    expect(env.deps.api.listMessages).toHaveBeenCalledWith("c1", 500);
+    expect(env.deps.api.listMessages).toHaveBeenCalledWith("c1", 80);
     expect(env.deps.realtime.connect).toHaveBeenCalled();
     expect(env.deps.realtime.subscribe).toHaveBeenCalledWith("c1");
-    // self is seeded into the directory
+    // self + known agents are seeded into the directory without search warmups.
     expect(authorLabel(s.directory, "me1")).toBe("Ada");
+    expect(authorLabel(s.directory, "agent-scout")).toBe("Scout");
+    expect(env.deps.api.searchMembers).not.toHaveBeenCalled();
+  });
+
+  it("dedupes concurrent bootstrap calls so the dashboard does not double-fetch on mount", async () => {
+    let resolveMe!: (value: typeof identity) => void;
+    (env.deps.api.me as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      new Promise<typeof identity>((resolve) => {
+        resolveMe = resolve;
+      }),
+    );
+    const store = createStore(env.deps);
+
+    const first = store.bootstrap();
+    const second = store.bootstrap();
+    expect(env.deps.api.me).toHaveBeenCalledTimes(1);
+    resolveMe(identity);
+    await Promise.all([first, second]);
+
+    expect(env.deps.api.listChannels).toHaveBeenCalledTimes(1);
+    expect(env.deps.api.listAgents).toHaveBeenCalledTimes(1);
+    expect(env.deps.api.listMessages).toHaveBeenCalledTimes(1);
   });
 
   it("restores the last selected channel across a fresh bootstrap (#650)", async () => {
@@ -297,7 +322,7 @@ describe("store bootstrap + realtime", () => {
 
     expect(restoredStore.getState().activeChannelId).toBe("c2");
     expect(env.deps.realtime.subscribe).toHaveBeenCalledWith("c2");
-    expect(env.deps.api.listMessages).toHaveBeenCalledWith("c2", 500);
+    expect(env.deps.api.listMessages).toHaveBeenCalledWith("c2", 80);
   });
 
   it("falls back to the first channel when the saved selection no longer exists (#650)", async () => {

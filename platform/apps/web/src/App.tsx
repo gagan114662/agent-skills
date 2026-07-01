@@ -11,7 +11,7 @@ import { PublicDoorFooter, PublicDoorNav } from "./components/onboarding/PublicD
 import { TELEGRAM_BOT_URL } from "./components/onboarding/messaging-entry.js";
 import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
 import { EverydayShell } from "./components/everyday/EverydayShell.js";
-import { ipopDogfoodEveryday } from "./components/everyday/everyday-data.js";
+import { emptyEverydayData } from "./components/everyday/everyday-data.js";
 import { experienceTokenStyle } from "./design/ipop-experience-tokens.js";
 import { APP_ROUTES, navigate, useRoute } from "./routing.js";
 import { useAppState, useStore } from "./store/StoreContext.js";
@@ -64,14 +64,14 @@ function DashboardRoute(): React.JSX.Element {
   }, [store]);
 
   let dashboard: React.JSX.Element;
-  if (phase === "ready") dashboard = <LiveEverydayShell dashboardFirst dashboardOnly />;
+  if (phase === "ready") dashboard = <LiveEverydayShell dashboardFirst dashboardOnly theme="public" />;
   else if (phase === "loading") dashboard = <Splash />;
-  else dashboard = <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst dashboardOnly />;
+  else dashboard = <EverydayShell data={emptyEverydayData()} dashboardFirst dashboardOnly theme="public" />;
 
   return (
     <div className="public-dashboard" style={experienceTokenStyle("onboarding")}>
       <PublicDoorNav className="public-dashboard__nav" startHref={TELEGRAM_BOT_URL} />
-      <h1 className="sr-only">CMO brief</h1>
+      <h1 className="sr-only">Marketing dashboard</h1>
       {dashboard}
       <PublicDoorFooter className="public-dashboard__footer" />
     </div>
@@ -125,8 +125,8 @@ export function App(): React.JSX.Element {
     );
   }
 
-  // The homepage Dashboard icon should not dump visitors into the auth wall. Anonymous visitors get a
-  // clearly-labelled sample; signed-in workspaces get the live workspace dashboard, not hard-coded dogfood.
+  // The homepage Dashboard icon should not dump visitors into the auth wall. Anonymous visitors get an
+  // honest empty live state; signed-in workspaces get the real workspace dashboard.
   if (DASHBOARD_PATH.test(path)) return <DashboardRoute />;
 
   // The theater needs a session (workspace-scoped stream), so it lives inside the auth boundary.

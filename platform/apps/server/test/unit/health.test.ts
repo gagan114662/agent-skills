@@ -43,25 +43,56 @@ describe("GET /healthz", () => {
 describe("GET /readyz loop liveness", () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalReloadEnv = process.env.RELOAD_ENV;
+  const originalDatabaseUrl = process.env.DATABASE_URL;
+  const originalRedisUrl = process.env.REDIS_URL;
+  const originalReloadProfile = process.env.RELOAD_PROFILE;
+  const originalDeployProvider = process.env.DEPLOY_PROVIDER;
+  const originalBillingProvider = process.env.BILLING_PROVIDER;
+  const originalStripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  const originalVercelToken = process.env.VERCEL_TOKEN;
+
+  function restoreEnv(key: string, value: string | undefined): void {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 
   beforeEach(() => {
     pingDb.mockReset();
     pingRedis.mockReset();
     resetBackgroundLoopsForTest();
-    process.env.NODE_ENV = originalNodeEnv;
-    if (originalReloadEnv === undefined) delete process.env.RELOAD_ENV;
-    else process.env.RELOAD_ENV = originalReloadEnv;
+    restoreEnv("NODE_ENV", originalNodeEnv);
+    restoreEnv("RELOAD_ENV", originalReloadEnv);
+    restoreEnv("DATABASE_URL", originalDatabaseUrl);
+    restoreEnv("REDIS_URL", originalRedisUrl);
+    restoreEnv("RELOAD_PROFILE", originalReloadProfile);
+    restoreEnv("DEPLOY_PROVIDER", originalDeployProvider);
+    restoreEnv("BILLING_PROVIDER", originalBillingProvider);
+    restoreEnv("STRIPE_SECRET_KEY", originalStripeSecretKey);
+    restoreEnv("VERCEL_TOKEN", originalVercelToken);
   });
 
   afterEach(() => {
-    process.env.NODE_ENV = originalNodeEnv;
-    if (originalReloadEnv === undefined) delete process.env.RELOAD_ENV;
-    else process.env.RELOAD_ENV = originalReloadEnv;
+    restoreEnv("NODE_ENV", originalNodeEnv);
+    restoreEnv("RELOAD_ENV", originalReloadEnv);
+    restoreEnv("DATABASE_URL", originalDatabaseUrl);
+    restoreEnv("REDIS_URL", originalRedisUrl);
+    restoreEnv("RELOAD_PROFILE", originalReloadProfile);
+    restoreEnv("DEPLOY_PROVIDER", originalDeployProvider);
+    restoreEnv("BILLING_PROVIDER", originalBillingProvider);
+    restoreEnv("STRIPE_SECRET_KEY", originalStripeSecretKey);
+    restoreEnv("VERCEL_TOKEN", originalVercelToken);
     resetBackgroundLoopsForTest();
   });
 
   it("fails production readiness when a critical background loop is registered disabled", async () => {
     process.env.RELOAD_ENV = "production";
+    process.env.RELOAD_PROFILE = "prod";
+    process.env.DATABASE_URL = "postgres://prod.example/reload";
+    process.env.REDIS_URL = "redis://prod.example:6379";
+    process.env.DEPLOY_PROVIDER = "vercel";
+    process.env.VERCEL_TOKEN = "vercel_readyz_fixture";
+    process.env.BILLING_PROVIDER = "stripe";
+    process.env.STRIPE_SECRET_KEY = "sk_test_readyz_fixture";
     pingDb.mockResolvedValue(true);
     pingRedis.mockResolvedValue(true);
     registerBackgroundLoop({

@@ -69,10 +69,14 @@ describe("pricing card visibility (#234/#287 — every tier must render)", () =>
 
   it("reduced-motion users also see every card (no animation, full opacity)", () => {
     // The reduced-motion override must keep cards visible (it disables the animation entirely).
-    const rm = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.pricing-card--pop\s*\{([\s\S]*?)\}/.exec(
-      css,
+    const pricingCardRule = css.indexOf(".pricing-card--pop");
+    const pricingReducedMotion = css.indexOf("@media (prefers-reduced-motion: reduce)", pricingCardRule);
+    expect(pricingReducedMotion, "a reduced-motion block must follow the pricing pop rule").toBeGreaterThan(
+      pricingCardRule,
     );
-    expect(rm, "a reduced-motion override for .pricing-card--pop must exist").not.toBeNull();
+    const pricingBlock = css.slice(pricingReducedMotion, pricingReducedMotion + 420);
+    expect(pricingBlock, "a reduced-motion override for .pricing-card--pop must exist").toBeTruthy();
+    const rm = /\.pricing-card--pop\s*\{([\s\S]*?)\}/.exec(pricingBlock);
     const body = rm?.[1] ?? "";
     expect(body).toMatch(/opacity\s*:\s*1/);
     expect(body).toMatch(/animation\s*:\s*none/);

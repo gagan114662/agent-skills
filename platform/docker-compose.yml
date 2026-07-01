@@ -41,6 +41,11 @@ services:
     environment:
       DATABASE_URL: postgres://reload:reload@postgres:5432/reload
       REDIS_URL: redis://redis:6379
+      # The Docker image uses NODE_ENV=production; this local/CI compose smoke
+      # must explicitly opt into fake providers instead of silently inheriting them.
+      RELOAD_ALLOW_DRYRUN_DEPLOY_IN_PROD: "1"
+      RELOAD_ALLOW_BILLING_NONE_IN_PROD: "1"
+      RELOAD_ALLOW_DEMO_HARNESS_IN_PROD: "1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,6 +63,11 @@ services:
       PORT: 3000
       DATABASE_URL: postgres://reload:reload@postgres:5432/reload
       REDIS_URL: redis://redis:6379
+      # The Docker image uses NODE_ENV=production; this local/CI compose smoke
+      # must explicitly opt into fake providers instead of silently inheriting them.
+      RELOAD_ALLOW_DRYRUN_DEPLOY_IN_PROD: "1"
+      RELOAD_ALLOW_BILLING_NONE_IN_PROD: "1"
+      RELOAD_ALLOW_DEMO_HARNESS_IN_PROD: "1"
     ports:
       - "3000:3000"
     # Bound the blast radius of any single tenant/runaway request (#19 review: resource limits).

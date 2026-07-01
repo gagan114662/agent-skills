@@ -15,6 +15,7 @@
  */
 
 import { mintTrackingRef, buildTrackedUrl, type Utm } from "./tracking.js";
+import { DEFAULT_PUBLIC_APP_ORIGIN } from "../product-origins.js";
 
 export type BadgeFormat = "html" | "markdown" | "text";
 
@@ -33,7 +34,7 @@ export interface BuildAttributionBadgeInput {
 
 /** The fixed, human-readable label — ipop's own voice, never artifact-derived. */
 const BADGE_LABEL = "Built with ipop";
-const DEFAULT_BASE_URL = "https://ipop.ai";
+const DEFAULT_BASE_URL = DEFAULT_PUBLIC_APP_ORIGIN;
 const DEFAULT_UTM_SOURCE = "builtwith";
 
 /**

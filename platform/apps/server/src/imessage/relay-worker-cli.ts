@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { publicApiOrigin } from "../product-origins.js";
 import { MacOsMessagesAdapter } from "./macos-adapter.js";
 
 const execFileAsync = promisify(execFile);
@@ -140,7 +141,7 @@ export function parseRelayWorkerConfig(input: {
   }
   const host = input.host ?? hostname();
   return {
-    baseUrl: env.IMESSAGE_RELAY_API_BASE?.trim() || "https://api.ipop.ai",
+    baseUrl: publicApiOrigin(env),
     secret: requiredFrom(env, "IMESSAGE_RELAY_WEBHOOK_SECRET"),
     host,
     relayId: env.IMESSAGE_RELAY_ID?.trim() || "mac-" + host,

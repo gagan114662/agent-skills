@@ -22,13 +22,14 @@ import { resolveDriverAsync } from "./driver.js";
 import { githubReporter, reportFindings, type IssueClient } from "./bridge.js";
 import { parseSelfqaMarker } from "./render.js";
 import type { QaFinding, QaSuite, RawCheckResult } from "./types.js";
+import { DEFAULT_PUBLIC_APP_ORIGIN } from "../product-origins.js";
 
 const SELFQA_LABEL = "selfqa";
 
 /** Parse `--suite` / `--target` from argv (after the `--` separator pnpm forwards). */
 function parseArgs(argv: string[]): { suite: QaSuite; target: string } {
   let suite: QaSuite = "smoke";
-  let target = process.env.SELFQA_TARGET ?? "https://ipop.ai";
+  let target = process.env.SELFQA_TARGET ?? DEFAULT_PUBLIC_APP_ORIGIN;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--suite" && (argv[i + 1] === "smoke" || argv[i + 1] === "full")) suite = argv[++i] as QaSuite;
     else if (argv[i] === "--target" && argv[i + 1]) target = argv[++i]!;

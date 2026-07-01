@@ -14,6 +14,7 @@ import { isMaintenanceActive } from "../maintenance/flag.js";
 import type { SessionLogger } from "../runtime/manager.js";
 import type { FailureEvent } from "../flywheel/types.js";
 import type { QaFinding } from "./types.js";
+import { DEFAULT_PUBLIC_APP_ORIGIN } from "../product-origins.js";
 
 /**
  * Production wiring for the Self-QA Loop (#171, ADR-0171). Default-OFF (config `selfqa.enabled` +
@@ -54,7 +55,7 @@ export function createDefaultSelfQaEngine(
   logger: SessionLogger,
   flywheelRecord: (event: FailureEvent) => Promise<unknown>,
 ): SelfQaEngine {
-  const target = process.env.SELFQA_TARGET ?? "https://ipop.ai";
+  const target = process.env.SELFQA_TARGET ?? DEFAULT_PUBLIC_APP_ORIGIN;
   const driver = resolveDriver(process.env.SELFQA_DRIVER ?? "none");
   const caps = (workspaceId: string) => resolveSelfqaCaps(loadConfig(workspaceId).selfqa);
 
