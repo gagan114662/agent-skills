@@ -23,7 +23,7 @@ describe("Workspace shell (console v5)", () => {
     // activation panel rather than a dead 0/0/0 board — the owner gets a clear path to a first project.
     // (The three board lanes rendering from live data is pinned in ConsoleView.test.)
     expect(screen.getByText(CONSOLE.firstRun.headline)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: CONSOLE.firstRun.cta })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: CONSOLE.firstRun.connectFirstCta })).toBeInTheDocument();
   });
 
   it("has no top nav — the old Board/Chat/Founder/…/Pricing tab strip is gone", async () => {
