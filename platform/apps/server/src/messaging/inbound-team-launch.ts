@@ -15,6 +15,7 @@ import { seedDepartmentForWorkspace } from "../marketing/default.js";
 import type { SessionManager } from "../runtime/manager.js";
 import type { TeamCoordinator, Subtask } from "../team/coordinator.js";
 import type { CodexSubscriptionStatus, CodexSubscriptionStatusProvider } from "../routes/team.js";
+import { publicAppOrigin } from "../product-origins.js";
 import { deliverPostedMessage } from "./delivery.js";
 
 export interface InboundTeamLaunchService {
@@ -80,11 +81,7 @@ const LANE_BY_HANDLE: Record<(typeof LAUNCH_HANDLES)[number], string> = {
 };
 
 function roomUrl(appBaseUrl?: string): string {
-  const base =
-    appBaseUrl?.trim() ||
-    process.env.IPOP_APP_URL?.trim() ||
-    process.env.RELOAD_WEB_ORIGIN?.trim() ||
-    "https://ipop.ai";
+  const base = appBaseUrl?.trim() || publicAppOrigin();
   return new URL("/everyday", base).toString();
 }
 

@@ -5,6 +5,7 @@ import { parseProfile, profilePreset, type ProfileName } from "./runtime/posture
 import type { SandboxGitSource } from "./runtime/sandbox.js";
 import type { BillingMode } from "./billing/mode.js";
 import { ConfigValidationError } from "./config/loader.js";
+import { DEFAULT_PUBLIC_APP_ORIGIN } from "./product-origins.js";
 
 /** Environment configuration with local-dev defaults matching docker-compose.yml; production fails closed. */
 export interface Env {
@@ -607,7 +608,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     selfqa: {
       // Default 0 (off): the self-QA loop is opt-in. The always-on entry is the CI CLI (#171), not the timer.
       intervalMs: Number(source.SELFQA_INTERVAL_MS ?? 0) || 0,
-      target: source.SELFQA_TARGET ?? "https://ipop.ai",
+      target: source.SELFQA_TARGET ?? DEFAULT_PUBLIC_APP_ORIGIN,
       driver: source.SELFQA_DRIVER ?? "none",
     },
     verifiers: {

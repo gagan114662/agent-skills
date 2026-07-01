@@ -1,3 +1,5 @@
+import { productUrl } from "../product-origins.js";
+
 export interface TelegramConfig {
   botToken?: string;
   roomChatId?: string;
@@ -127,7 +129,7 @@ function chatNativeRoomUpdate(input: {
 }): string {
   const update = clipped(input.text, 700);
   const lines = [input.author + ": " + update.text];
-  if (update.clipped) lines.push("Full update: https://ipop.ai/everyday");
+  if (update.clipped) lines.push("Full update: " + productUrl("/everyday"));
   lines.push("", "reply with ref: " + input.providerPrefix + ":" + input.channelId + ":" + input.messageId);
   return lines.join("\n");
 }

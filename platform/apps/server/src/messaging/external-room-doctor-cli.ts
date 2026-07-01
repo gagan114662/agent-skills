@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { TELEGRAM_ROOM_CONNECTION_ID, WHATSAPP_ROOM_CONNECTION_ID } from "../connections/registry.js";
 import { resolveServiceSecrets } from "../db/repositories/external-credentials.js";
 import { loadEnv, type TelegramEnv, type WhatsAppEnv } from "../env.js";
+import { DEFAULT_PUBLIC_API_ORIGIN, publicApiOrigin } from "../product-origins.js";
 import { TelegramRoomService } from "../telegram/service.js";
 import { WhatsAppRoomService } from "../whatsapp/service.js";
 
@@ -14,7 +15,7 @@ type ResolveServiceSecrets = typeof resolveServiceSecrets;
 
 const TELEGRAM_WORKSPACE_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
 const WHATSAPP_WORKSPACE_RECIPIENT_KEY = "WHATSAPP_RECIPIENT";
-const PRODUCTION_API_BASE_URL = "https://api.ipop.ai";
+const PRODUCTION_API_BASE_URL = DEFAULT_PUBLIC_API_ORIGIN;
 
 export interface DoctorCheck {
   name: string;
@@ -103,7 +104,7 @@ export function parseExternalRoomDoctorConfig(
     productionApiBaseUrl:
       argValue(argv, "--api-base-url")?.replace(/\/+$/, "") ??
       input.env?.RELOAD_PRODUCTION_API_BASE_URL?.replace(/\/+$/, "") ??
-      PRODUCTION_API_BASE_URL,
+      publicApiOrigin(input.env),
     smokeText:
       argValue(argv, "--text") ??
       "ipop external-room doctor smoke: provider setup is reachable; reply in-thread to complete E2E proof.",
@@ -248,14 +249,14 @@ async function productionEndpointChecks(input: {
   return checks;
 }
 
-function missingEnvRemedy(provider: "telegram" | "whatsapp", missingEnv: string[]): string {
+function missingEnvRemedy(provider: "telegram" | "whatsapp", missingEnv: string[], apiBaseUrl: string): string {
   if (missingEnv.length === 0) return "";
   if (provider === "telegram") {
     return [
       "remedy: set production secrets",
       "fly secrets set --app reload-api TELEGRAM_BOT_TOKEN=<bot-token> TELEGRAM_WEBHOOK_SECRET=<random-secret>",
       "then call Telegram setWebhook for " +
-        PRODUCTION_API_BASE_URL +
+        apiBaseUrl +
         "/telegram/webhook with secret_token=$TELEGRAM_WEBHOOK_SECRET",
       "then run room:doctor -- --send-smoke --workspace-id <workspace-id> --channel-id <channel-id> --message-id <message-id>",
     ].join("; ");
@@ -263,20 +264,20 @@ function missingEnvRemedy(provider: "telegram" | "whatsapp", missingEnv: string[
   return [
     "remedy: set production secrets",
     "fly secrets set --app reload-api WHATSAPP_ACCESS_TOKEN=<access-token> WHATSAPP_PHONE_NUMBER_ID=<phone-number-id> WHATSAPP_WEBHOOK_VERIFY_TOKEN=<verify-token> WHATSAPP_APP_SECRET=<app-secret>",
-    "then configure Meta webhook callback " + PRODUCTION_API_BASE_URL + "/whatsapp/webhook",
+    "then configure Meta webhook callback " + apiBaseUrl + "/whatsapp/webhook",
     "with the same verify token and signed POSTs using X-Hub-Signature-256",
     "then run room:doctor -- --send-smoke --workspace-id <workspace-id> --channel-id <channel-id> --message-id <message-id>",
   ].join("; ");
 }
 
-function missingEnvCheck(provider: "telegram" | "whatsapp", missingEnv: string[]): DoctorCheck {
+function missingEnvCheck(provider: "telegram" | "whatsapp", missingEnv: string[], apiBaseUrl = PRODUCTION_API_BASE_URL): DoctorCheck {
   return {
     name: provider + "-config",
     status: missingEnv.length === 0 ? "pass" : "fail",
     message:
       missingEnv.length === 0
         ? provider + " room config present"
-        : provider + " room config missing: " + missingEnv.join(", ") + "; " + missingEnvRemedy(provider, missingEnv),
+        : provider + " room config missing: " + missingEnv.join(", ") + "; " + missingEnvRemedy(provider, missingEnv, apiBaseUrl),
   };
 }
 
@@ -597,7 +598,7 @@ export async function runExternalRoomDoctor(
   }
 
   if (config.providers.includes("telegram")) {
-    checks.push(missingEnvCheck("telegram", telegramService.status().missingEnv));
+    checks.push(missingEnvCheck("telegram", telegramService.status().missingEnv, config.productionApiBaseUrl));
     checks.push(await checkTelegramIdentity({ config: config.telegram, fetchImpl }));
     const telegramChatId = config.sendSmoke
       ? await resolveWorkspaceDestination({
@@ -627,7 +628,7 @@ export async function runExternalRoomDoctor(
   }
 
   if (config.providers.includes("whatsapp")) {
-    checks.push(missingEnvCheck("whatsapp", whatsappService.status().missingEnv));
+    checks.push(missingEnvCheck("whatsapp", whatsappService.status().missingEnv, config.productionApiBaseUrl));
     checks.push(await checkWhatsAppSender({ config: config.whatsapp, fetchImpl }));
     checks.push(checkWhatsAppSignature(whatsappService));
     const whatsAppRecipient = config.sendSmoke

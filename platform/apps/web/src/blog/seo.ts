@@ -4,6 +4,7 @@
  * the prerender build step (`scripts/prerender.mjs`, which does the fs I/O) and the unit tests share one
  * implementation. The actual page bodies come from `entry-server.tsx`.
  */
+import { resolvePublicWebOrigin } from "../product-origins.js";
 
 /** A page to prerender: where to write it, its canonical path, its body HTML, and its head meta. */
 export interface PrerenderPage {
@@ -43,8 +44,7 @@ function normalizeBuildSha(raw: unknown): string | null {
 
 /** The production origin. Overridable for previews via SITE_ORIGIN; trailing slash stripped. */
 export function resolveOrigin(env: Record<string, string | undefined> = {}): string {
-  const raw = env.SITE_ORIGIN || env.VITE_SITE_ORIGIN || "https://ipop.ai";
-  return raw.replace(/\/+$/, "");
+  return resolvePublicWebOrigin(env);
 }
 
 /**

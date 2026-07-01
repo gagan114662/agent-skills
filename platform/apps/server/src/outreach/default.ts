@@ -9,11 +9,12 @@ import type { PlanBillingService } from "../billing/plan-service.js";
 import { buildPayLinkSpec, buildTrackedPayUrl } from "../leads/pay-link.js";
 import { buildTrackedUrl } from "../attribution/tracking.js";
 import { dbAttributionExposureStore } from "../db/repositories/attribution.js";
+import { DEFAULT_PUBLIC_APP_ORIGIN } from "../product-origins.js";
 import { resolveOutreachCaps } from "./caps.js";
 import { OutreachService } from "./service.js";
 import type { OutreachChannel } from "./types.js";
 
-const DEFAULT_OUTREACH_TRIAL_BASE_URL = "https://ipop.ai/start";
+const DEFAULT_OUTREACH_TRIAL_BASE_URL = new URL("/start", DEFAULT_PUBLIC_APP_ORIGIN).toString();
 
 /**
  * Production wiring for the outreach engine (#225, ADR-0225). Binds the service to the real seams:

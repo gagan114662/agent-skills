@@ -25,6 +25,7 @@ import {
   type TelegramSendResult,
 } from "../telegram/service.js";
 import { consumeTelegramConnectCode, parseTelegramStartCode } from "../telegram/connect-code.js";
+import { productUrl } from "../product-origins.js";
 
 export interface TelegramRoutesOptions {
   service: TelegramRoomService;
@@ -45,7 +46,7 @@ function telegramConnectReply(status: "connected" | "already_connected_elsewhere
   if (status === "already_connected_elsewhere") {
     return "This Telegram chat is already connected to another ipop workspace. Disconnect it there before reconnecting.";
   }
-  return "That Telegram connect link expired. Open https://ipop.ai/everyday, tap Connect Telegram, then press Start again.";
+  return "That Telegram connect link expired. Open " + productUrl("/everyday") + ", tap Connect Telegram, then press Start again.";
 }
 
 function statusCode(result: TelegramSendResult): number {

@@ -8,7 +8,7 @@
  *
  *   1. An explicitly-configured `marketing.siteUrl` always wins (a customer who connected their domain).
  *   2. Otherwise the OWNER's own workspace (`marketing.ownerWorkspaceId`) falls back to ipop's own site,
- *      `https://ipop.ai` — ipop dogfooding its marketing on its real domain (#235).
+ *      the configured public app origin — ipop dogfooding its marketing on its real domain (#235).
  *   3. Any other workspace with nothing configured returns `undefined` (the caller keeps the existing
  *      `"our website"` placeholder — we never invent a fake domain for a customer).
  *
@@ -16,8 +16,10 @@
  * and passes the two fields in.
  */
 
+import { DEFAULT_PUBLIC_APP_ORIGIN } from "../product-origins.js";
+
 /** ipop's own public marketing site — the owner-workspace fallback when no `siteUrl` is configured. */
-export const IPOP_SITE_URL = "https://ipop.ai";
+export const IPOP_SITE_URL = DEFAULT_PUBLIC_APP_ORIGIN;
 
 export interface ResolveSiteUrlInput {
   /** The workspace the task is being rendered for. */
