@@ -148,4 +148,26 @@ describe("Tomo-simple onboarding door viewport guards", () => {
     expect(decl(mark, "width")).toBe("clamp(46px, 4.35vw, 78px)");
     expect(decl(mark, "height")).toBe("clamp(46px, 4.35vw, 78px)");
   });
+
+  it("gives homepage icons purposeful hover motion and gates it for reduced motion", () => {
+    for (const keyframe of [
+      "@keyframes onboard-login-target",
+      "@keyframes onboard-love-beat",
+      "@keyframes onboard-dashboard-snap",
+      "@keyframes onboard-start-bubble",
+      "@keyframes onboard-map-pin",
+      "@keyframes onboard-email-ping",
+      "@keyframes onboard-paid-needle",
+      "@keyframes onboard-check-land",
+    ]) {
+      expect(css).toContain(keyframe);
+    }
+
+    const reducedBlocks = css.split(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{/).slice(1);
+    const reduced = reducedBlocks.join("\n");
+    expect(reduced).toContain('.onboard-door-action[data-kind="start"]:hover .onboard-door-action__mark::before');
+    expect(reduced).toContain('.onboard-marketing__item[data-kind="approval"]:hover .onboard-marketing__mark::before');
+    expect(reduced).toMatch(/animation:\s*none/);
+    expect(reduced).toMatch(/transition:\s*none/);
+  });
 });
