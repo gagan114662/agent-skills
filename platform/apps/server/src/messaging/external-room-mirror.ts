@@ -59,6 +59,8 @@ const TELEGRAM_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
 const WHATSAPP_RECIPIENT_KEY = "WHATSAPP_RECIPIENT";
 const DEBUG_TOOL_CHATTER_ENV = "EXTERNAL_ROOM_DEBUG_TOOL_CHATTER";
 const TOOL_MARKER = "\u{1f527}";
+const MIRROR_DEDUPE_WINDOW_MS = 5 * 60 * 1000;
+const recentExternalRoomMirrorKeys = new Map<string, number>();
 
 function envFlag(raw: string | undefined): boolean {
   const value = raw?.trim().toLowerCase();
@@ -87,6 +89,36 @@ function snippet(text: string, max = 1200): string {
   return value.slice(0, max - 3).trimEnd() + "...";
 }
 
+function isLocalPathMarkdownLink(line: string): boolean {
+  return /\[[^\]]+\]\(\/(?:home|tmp|private|Users|app)\/[^)]*\)/.test(line);
+}
+
+function isOperationalMirrorLine(line: string): boolean {
+  const value = line.trim();
+  if (!value) return false;
+  if (/^✅\s*session completed\s*\(exit\s+\d+\)/i.test(value)) return true;
+  if (/^session completed\s*\(exit\s+\d+\)/i.test(value)) return true;
+  if (/^receipt left:\s*/i.test(value)) return true;
+  if (/\bsaved in\s+\[[^\]]+\]\(\/(?:home|tmp|private|Users|app)\//i.test(value)) return true;
+  if (/^i[’']ve left\b.*\breceipt\b.*\.md\b/i.test(value)) return true;
+  if (/^`?(?:curl|python3?|node|pnpm|git|gh)`?\s+(?:is|was)\s+not\s+installed\b/i.test(value)) return true;
+  if (/\bbrowser-backed checks\b/i.test(value)) return true;
+  if (/\bfinal source check\b/i.test(value)) return true;
+  if (/\boutbound answer\b/i.test(value) && /\bverified\b/i.test(value)) return true;
+  return false;
+}
+
+function stripOperationalMirrorLines(body: string): string {
+  return body
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => !isOperationalMirrorLine(line))
+    .filter((line) => !(isLocalPathMarkdownLink(line) && !/^\s*\d+[.)]/.test(line)))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function isToolTraceLine(line: string): boolean {
   const value = line.trim();
   if (!value) return false;
@@ -106,13 +138,14 @@ function isToolTraceLine(line: string): boolean {
 }
 
 function customerSafeBody(input: { body: string; type: ExternalRoomEventType }): string {
-  const lines = input.body.split(/\r?\n/);
+  const body = stripOperationalMirrorLines(input.body) || input.body;
+  const lines = body.split(/\r?\n/);
   const traceLines = lines.filter(isToolTraceLine).length;
   const nonTraceLines = lines
     .map((line) => line.trim())
     .filter((line) => line && !isToolTraceLine(line) && !/^[-=]{3,}$/.test(line));
   const traceHeavy = traceLines > 0 && traceLines >= Math.max(2, Math.ceil(lines.filter((line) => line.trim()).length / 3));
-  if (!traceHeavy) return input.body;
+  if (!traceHeavy) return body;
 
   const safe = nonTraceLines
     .filter((line) => !/[{};]/.test(line) || /[.!?]$/.test(line))
@@ -194,7 +227,16 @@ export function isExternalRoomDebugChatter(input: {
 }): boolean {
   if (input.source !== "agent_post") return false;
 
-  const body = input.body.replace(/\s+/g, " ").trim();
+  const contentLines = input.body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (contentLines.length > 0 && contentLines.every(isOperationalMirrorLine)) return true;
+
+  const stripped = stripOperationalMirrorLines(input.body);
+  if (!stripped && contentLines.length > 0) return true;
+
+  const body = (stripped || input.body).replace(/\s+/g, " ").trim();
   if (!body) return true;
   if (body.startsWith(TOOL_MARKER)) return true;
   if (/^(?:tool(?: call| use| result)?|command_execution|file_change)\b[:\s-]*/i.test(body)) return true;
@@ -206,6 +248,24 @@ export function isExternalRoomDebugChatter(input: {
     return true;
   }
   return false;
+}
+
+function rememberExternalRoomMirrorSend(input: {
+  provider: ExternalRoomMessageProvider;
+  conversationId: string;
+  channelId: string;
+  eventText: string;
+  nowMs?: number;
+}): { key: string; duplicate: boolean } {
+  const nowMs = input.nowMs ?? Date.now();
+  for (const [key, seenAt] of recentExternalRoomMirrorKeys) {
+    if (nowMs - seenAt > MIRROR_DEDUPE_WINDOW_MS) recentExternalRoomMirrorKeys.delete(key);
+  }
+  const key = [input.provider, input.conversationId, input.channelId, snippet(input.eventText, 700)].join("\u0000");
+  const seenAt = recentExternalRoomMirrorKeys.get(key);
+  if (seenAt !== undefined && nowMs - seenAt <= MIRROR_DEDUPE_WINDOW_MS) return { key, duplicate: true };
+  recentExternalRoomMirrorKeys.set(key, nowMs);
+  return { key, duplicate: false };
 }
 
 export function shouldMirrorExternalRoomEvent(input: {
@@ -279,6 +339,13 @@ export function createExternalRoomMirror(deps: ExternalRoomMirrorDeps): External
       messageId: input.message.id,
     });
     if (existing) return;
+    const dedupe = rememberExternalRoomMirrorSend({
+      provider: destination.provider,
+      conversationId: destination.conversationId,
+      channelId: input.channelId,
+      eventText,
+    });
+    if (dedupe.duplicate) return;
 
     if (destination.provider === "telegram") {
       const result = await deps.telegram.send({
@@ -292,6 +359,7 @@ export function createExternalRoomMirror(deps: ExternalRoomMirrorDeps): External
         }),
       });
       if (result.status !== "sent") {
+        recentExternalRoomMirrorKeys.delete(dedupe.key);
         logRetryableFailure({
           log: deps.log,
           provider: "telegram",
@@ -325,6 +393,7 @@ export function createExternalRoomMirror(deps: ExternalRoomMirrorDeps): External
       }),
     });
     if (result.status !== "sent") {
+      recentExternalRoomMirrorKeys.delete(dedupe.key);
       logRetryableFailure({
         log: deps.log,
         provider: "whatsapp",
