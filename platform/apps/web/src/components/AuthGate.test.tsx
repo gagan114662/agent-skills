@@ -97,7 +97,8 @@ describe("AuthGate routing", () => {
     );
 
     expect(await screen.findByRole("heading", { name: /this browser is signed in/i })).toBeInTheDocument();
-    expect(screen.getByText(/you're signed in as ada for workspace w1/i)).toBeInTheDocument();
+    expect(screen.getByText(/you're signed in as ada for this workspace/i)).toBeInTheDocument();
+    expect(screen.queryByText(/workspace w1/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
     expect(screen.queryByText(/already signed in/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/you're already in/i)).not.toBeInTheDocument();

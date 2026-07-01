@@ -264,8 +264,13 @@ function InstantDeliverable({
       </div>
       <div className="onboard-instant__actions">
         <button className="onboard-cta" type="button" disabled={approving} onClick={onApprove}>
-          {approving ? "approving" : "approve this first result"}
+          {approving ? "approved - opening room" : "approve this first result"}
         </button>
+        {approving && (
+          <p className="onboard-instant__status" role="status">
+            Approved. The team room is opening now.
+          </p>
+        )}
       </div>
     </article>
   );
@@ -298,6 +303,8 @@ const MARKETING_ICON_ROW = [
   { key: "receipt", label: "receipt", detail: "proof saved" },
 ] as const;
 
+type MarketingIconItem = (typeof MARKETING_ICON_ROW)[number];
+
 const MESSAGING_CHANNELS: readonly {
   key: MessagingChannelKey;
   label: string;
@@ -308,16 +315,23 @@ const MESSAGING_CHANNELS: readonly {
   { key: "whatsapp", label: "WhatsApp", detail: "team thread" },
 ] as const;
 
-function MarketingIconRow(): React.JSX.Element {
+function MarketingIconRow({ onPick }: { onPick: (item: MarketingIconItem) => void }): React.JSX.Element {
   return (
-    <section className="onboard-marketing" aria-label="marketing work preview" data-interactive="false">
-      <ol className="onboard-marketing__row" aria-label="decorative marketing capability preview">
+    <section className="onboard-marketing" aria-label="marketing work preview" data-interactive="true">
+      <ol className="onboard-marketing__row" aria-label="marketing jobs">
         {MARKETING_ICON_ROW.map((item) => (
           <li key={item.key} className="onboard-marketing__item" data-kind={item.key}>
-            <span className="onboard-marketing__mark" aria-hidden="true">
-              <span className="onboard-marketing__detail">{item.detail}</span>
-            </span>
-            <span className="onboard-marketing__label">{item.label}</span>
+            <button
+              type="button"
+              className="onboard-marketing__button"
+              onClick={() => onPick(item)}
+              aria-label={`Start with ${item.label}: ${item.detail}`}
+            >
+              <span className="onboard-marketing__mark" aria-hidden="true">
+                <span className="onboard-marketing__detail">{item.detail}</span>
+              </span>
+              <span className="onboard-marketing__label">{item.label}</span>
+            </button>
           </li>
         ))}
       </ol>
@@ -510,7 +524,12 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
           {phase === "door" && (
             <form className="onboard-door" onSubmit={onDoorSubmit} noValidate>
               <PopMark className="onboard__mark" />
-              <MarketingIconRow />
+              <MarketingIconRow
+                onPick={(item) => {
+                  setInput(item.label + ": " + item.detail);
+                  inputRef.current?.focus();
+                }}
+              />
               <h1 className="onboard-door__greeting">{greeting(hour, props.name)}</h1>
               <MessagingChannelRail
                 selected={selectedChannel}
@@ -603,14 +622,14 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   ) : (
                     <a
                       className="onboard-cta onboard-cta--ghost"
-                      href={TELEGRAM_BOT_URL}
+                      href={messagingChannelUrl(selectedChannel)}
                       onClick={(event) => {
                         if (!onOpenWorkspace) return;
                         event.preventDefault();
                         onOpenWorkspace(input);
                       }}
                     >
-                      {ONBOARD_COPY.reading.openRoom}
+                      {messagingChannelCta(selectedChannel)}
                     </a>
                   )}
                 </>

@@ -646,7 +646,6 @@ function SignedInAuthRoute({ mode }: { mode: Mode }): React.JSX.Element {
   }
 
   const signedInAs = identity?.displayName?.trim() || "this account";
-  const workspaceLabel = identity?.workspaceId ? `workspace ${identity.workspaceId}` : "this workspace";
 
   return (
     <main className="splash" role="main" aria-labelledby="signed-in-auth-title">
@@ -654,8 +653,8 @@ function SignedInAuthRoute({ mode }: { mode: Mode }): React.JSX.Element {
       <p className="auth__trial-badge">Signed-in workspace</p>
       <h1 id="signed-in-auth-title">{mode === "login" ? "This browser is signed in" : "Your workspace is ready"}</h1>
       <p>
-        You're signed in as {signedInAs} for {workspaceLabel}. Open the agent room, switch plans, or sign
-        out to use a different account.
+        You're signed in as {signedInAs} for this workspace. Open the agent room, switch plans, or sign out to
+        use a different account.
       </p>
       {signOutError ? (
         <p className="form-error" role="alert">
