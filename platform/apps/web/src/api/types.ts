@@ -539,12 +539,15 @@ export interface AgentProfile {
 }
 
 export type TeamRunHarness = "demo" | "claude-code" | "codex";
+export type TeamArtifactKind = "scout_research";
 
 export interface TeamRunSubtaskInput {
   agentMemberId: string;
   task: string;
   branch: string;
   phase?: number;
+  producesArtifacts?: TeamArtifactKind[];
+  requiresArtifacts?: TeamArtifactKind[];
   harness?: TeamRunHarness;
 }
 
@@ -556,6 +559,8 @@ export interface TeamRunResponse {
     agentMemberId: string;
     branch: string;
     phase?: number;
+    producesArtifacts: TeamArtifactKind[];
+    requiresArtifacts: TeamArtifactKind[];
     harness: TeamRunHarness | null;
   }>;
 }

@@ -1,4 +1,4 @@
-import type { TeamEvent, TeamEventKind } from "@reload/shared";
+import type { ScoutResearchArtifact, TeamArtifact, TeamEvent, TeamEventKind } from "@reload/shared";
 
 /**
  * Team channel wire codec (Team Mode). A {@link TeamEvent} is carried as a channel message body
@@ -19,6 +19,45 @@ const TEAM_EVENT_KINDS: readonly TeamEventKind[] = [
   "needs_handoff",
   "done",
 ];
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function parseScoutResearchArtifact(input: Record<string, unknown>): ScoutResearchArtifact | null {
+  if (
+    input.kind !== "scout_research" ||
+    input.schemaVersion !== 1 ||
+    typeof input.siteSummary !== "string" ||
+    typeof input.icp !== "string" ||
+    typeof input.positioning !== "string" ||
+    !isStringArray(input.proofPoints) ||
+    !isStringArray(input.competitors) ||
+    typeof input.toneNotes !== "string" ||
+    !isStringArray(input.sourceUrls)
+  ) {
+    return null;
+  }
+  return {
+    kind: "scout_research",
+    schemaVersion: 1,
+    siteSummary: input.siteSummary,
+    icp: input.icp,
+    positioning: input.positioning,
+    proofPoints: input.proofPoints,
+    competitors: input.competitors,
+    toneNotes: input.toneNotes,
+    sourceUrls: input.sourceUrls,
+  };
+}
+
+function parseArtifact(input: unknown): TeamArtifact | null {
+  if (input == null) return null;
+  if (typeof input !== "object") return null;
+  const artifact = input as Record<string, unknown>;
+  if (artifact.kind === "scout_research") return parseScoutResearchArtifact(artifact);
+  return null;
+}
 
 /** Encode a team event into a channel message body: `<marker> <json>`. */
 export function encodeTeamEvent(event: TeamEvent): string {
@@ -52,6 +91,8 @@ export function tryParseTeamEvent(body: string): TeamEvent | null {
   ) {
     return null;
   }
+  const artifact = e.artifact === undefined || e.artifact === null ? null : parseArtifact(e.artifact);
+  if (e.artifact !== undefined && e.artifact !== null && !artifact) return null;
   return {
     teamRunId: e.teamRunId,
     subtaskId: e.subtaskId,
@@ -59,6 +100,7 @@ export function tryParseTeamEvent(body: string): TeamEvent | null {
     kind: e.kind as TeamEventKind,
     summary: e.summary,
     branch: e.branch as string | null,
+    ...(artifact ? { artifact } : {}),
     createdAt: e.createdAt,
   };
 }

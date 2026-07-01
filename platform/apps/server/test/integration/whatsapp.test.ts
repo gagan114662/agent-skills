@@ -14,6 +14,7 @@ import type { CodexSubscriptionStatus, CodexSubscriptionStatusProvider } from ".
 import type { LaunchInput, SessionLogger } from "../../src/runtime/manager.js";
 import { TeamChannel } from "../../src/team/channel.js";
 import { TeamCoordinator } from "../../src/team/coordinator.js";
+import { encodeTeamEvent } from "../../src/team/protocol.js";
 import { TelegramRoomService } from "../../src/telegram/service.js";
 import { WhatsAppRoomService, type WhatsAppTransport } from "../../src/whatsapp/service.js";
 import { createExternalRoomMirror, setExternalRoomMirror } from "../../src/messaging/external-room-mirror.js";
@@ -42,6 +43,33 @@ const silentLogger: SessionLogger = {
 const fakeLauncher = {
   launch: vi.fn(async (input: LaunchInput) => {
     teamLaunches.push(input);
+    if (input.teamRunId && input.task.includes("Required team artifact production contract")) {
+      await channelPoster.post({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        agentMemberId: input.agentMemberId,
+        body: encodeTeamEvent({
+          teamRunId: input.teamRunId,
+          subtaskId: "scout",
+          agentMemberId: input.agentMemberId,
+          kind: "milestone",
+          summary: "research artifact ready: ipop.ai",
+          branch: null,
+          artifact: {
+            kind: "scout_research",
+            schemaVersion: 1,
+            siteSummary: "ipop.ai offers a marketing team in your messages.",
+            icp: "Founders who want a hands-on AI marketing team",
+            positioning: "Messaging-native marketing execution with visible teammates.",
+            proofPoints: ["Homepage says marketing team in your messages", "Room names Scout, Quill, Echo, and Bid"],
+            competitors: ["agency retainer", "generic chatbot"],
+            toneNotes: "Plain, direct, slightly playful.",
+            sourceUrls: ["https://ipop.ai"],
+          },
+          createdAt: new Date(0).toISOString(),
+        }),
+      });
+    }
     return { id: "whatsapp-session-" + teamLaunches.length };
   }),
   join: vi.fn(async () => {}),

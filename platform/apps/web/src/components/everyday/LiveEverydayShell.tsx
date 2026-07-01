@@ -8,6 +8,7 @@ import type {
   FirstRunReceiptInput,
   IMessageStatusResponse,
   Message,
+  TeamArtifactKind,
   TeamRunSubtaskInput,
 } from "../../api/types.js";
 import type { AppState, LiveSessionLite } from "../../store/store.js";
@@ -512,6 +513,8 @@ interface RoomAgentSpec {
   readonly role: RoomAgentRole;
   readonly lane: string;
   readonly phase: number;
+  readonly producesArtifacts?: readonly TeamArtifactKind[];
+  readonly requiresArtifacts?: readonly TeamArtifactKind[];
   readonly immediateRequest: (goal: string) => string;
   readonly outputFormat: readonly string[];
 }
@@ -521,10 +524,11 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     role: "Scout",
     lane: "insight mining",
     phase: 1,
+    producesArtifacts: ["scout_research"],
     immediateRequest: (goal) =>
       "Mine customer/category/product/user/time/space insights for " +
       goal +
-      " from public evidence. Rank the strongest tensions before recommending work.",
+      " from public evidence. Rank the strongest tensions before recommending work. Produce the required scout_research artifact before you mark the lane done.",
     outputFormat: [
       "top 5 ranked insights with evidence strength",
       "what to ask the brand next",
@@ -534,22 +538,25 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
   {
     role: "Quill",
     lane: "creative platform",
-    phase: 1,
+    phase: 2,
+    requiresArtifacts: ["scout_research"],
     immediateRequest: (goal) =>
-      "You own the drafts. Read the target site yourself if Scout's handoff is not visible yet, then turn the strongest insight into a distinctive marketing platform for " +
+      "You own the drafts. Use the validated Scout research artifact that the coordinator injects into this task, then turn its strongest proof points into a distinctive marketing platform for " +
       goal +
-      ". Produce named, approval-ready draft assets for every format the owner requested. Reference award-winning work from another category and adapt the mechanism, not the surface.",
+      ". Produce named, approval-ready draft assets for every format the owner requested. Reference award-winning work from another category and adapt the mechanism, not the surface. Cite the artifact proofPoints or sourceUrls used by each draft.",
     outputFormat: [
       "campaign platform",
       "why it is not generic AI copy",
       "named draft artifacts with format labels",
+      "research proof points cited per draft",
       "first asset draft ready for approval",
     ],
   },
   {
     role: "Echo",
     lane: "distribution",
-    phase: 2,
+    phase: 3,
+    requiresArtifacts: ["scout_research"],
     immediateRequest: (goal) =>
       "Plan the first outreach/content distribution moves for " +
       goal +
@@ -563,7 +570,8 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
   {
     role: "Lens",
     lane: "taste and proof",
-    phase: 3,
+    phase: 4,
+    requiresArtifacts: ["scout_research"],
     immediateRequest: (goal) =>
       "Review Scout, Quill, and Echo's room artifacts for brand taste, originality, proof, and anti-slop quality for " +
       goal +
@@ -577,7 +585,7 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
   {
     role: "Codex",
     lane: "codex_operator_lane",
-    phase: 4,
+    phase: 5,
     immediateRequest: (goal) =>
       "Act as the implementation operator for the marketing room. Convert approved product, website, workflow, connector, or observability decisions into implementation tasks, PRs, issues, or verified fixes for " +
       goal +
@@ -713,6 +721,8 @@ async function launchCodexRoomRun(
       task: structuredRoomTask(spec, goal),
       branch: "ipop-" + slug(spec.role) + "-" + slug(goal),
       phase: spec.phase,
+      ...(spec.producesArtifacts ? { producesArtifacts: [...spec.producesArtifacts] } : {}),
+      ...(spec.requiresArtifacts ? { requiresArtifacts: [...spec.requiresArtifacts] } : {}),
       harness: "codex",
     });
   }

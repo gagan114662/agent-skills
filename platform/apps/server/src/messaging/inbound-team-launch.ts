@@ -82,9 +82,9 @@ const LANE_BY_HANDLE: Record<(typeof LAUNCH_HANDLES)[number], string> = {
 
 const PHASE_BY_HANDLE: Record<(typeof LAUNCH_HANDLES)[number], number> = {
   scout: 1,
-  quill: 1,
-  echo: 2,
-  bid: 2,
+  quill: 2,
+  echo: 3,
+  bid: 3,
 };
 
 function roomUrl(appBaseUrl?: string): string {
@@ -135,6 +135,10 @@ function buildSubtask(handle: (typeof LAUNCH_HANDLES)[number], agentMemberId: st
     agentMemberId,
     branch: "messaging-" + handle + "-" + newId().slice(0, 8),
     phase: PHASE_BY_HANDLE[handle],
+    ...(handle === "scout" ? { producesArtifacts: ["scout_research" as const] } : {}),
+    ...(handle === "quill" || handle === "echo" || handle === "bid"
+      ? { requiresArtifacts: ["scout_research" as const] }
+      : {}),
     preferredHarness: "codex",
     task:
       "You are " +
@@ -146,6 +150,9 @@ function buildSubtask(handle: (typeof LAUNCH_HANDLES)[number], agentMemberId: st
       ".\n\n" +
       "The owner started this from a messaging channel. Read the brief, work in the room, leave concrete receipts, " +
       "and keep anything that sends, posts, publishes, or spends behind human approval.\n\n" +
+      (handle === "scout"
+        ? "Before this lane is done, produce the required scout_research artifact with siteSummary, ICP, positioning, proof points, competitors, tone notes, and source URLs.\n\n"
+        : "Use the validated scout_research artifact injected by the coordinator; cite artifact proofPoints or sourceUrls in any draft or recommendation.\n\n") +
       "Owner brief: " +
       objective,
   };

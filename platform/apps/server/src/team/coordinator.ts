@@ -1,4 +1,4 @@
-import type { TeamEvent, TeamEventKind } from "@reload/shared";
+import type { TeamArtifact, TeamArtifactKind, TeamEvent, TeamEventKind } from "@reload/shared";
 import type { HarnessKind } from "../runtime/harness.js";
 import type { LaunchInput, SessionLogger } from "../runtime/manager.js";
 import {
@@ -31,6 +31,10 @@ export interface Subtask {
   branch: string;
   /** Optional ordered phase. All phase 1 work completes before phase 2 starts, etc. */
   phase?: number;
+  /** Artifact kinds this subtask promises to produce for downstream teammates. */
+  producesArtifacts?: TeamArtifactKind[];
+  /** Artifact kinds that must exist before this subtask may launch. */
+  requiresArtifacts?: TeamArtifactKind[];
   /** Optional per-subtask harness override. Codex operator lanes use this to make Codex the actual brain. */
   preferredHarness?: HarnessKind;
 }
@@ -89,6 +93,65 @@ function subtaskLaneSummary(task: string): string {
 function normalizePhase(phase: number | undefined): number {
   if (typeof phase !== "number" || !Number.isInteger(phase) || phase <= 0) return 1;
   return phase;
+}
+
+function uniqueArtifactKinds(kinds: readonly TeamArtifactKind[] | undefined): TeamArtifactKind[] {
+  return [...new Set(kinds ?? [])];
+}
+
+function artifactLabel(kind: TeamArtifactKind): string {
+  if (kind === "scout_research") return "Scout research artifact";
+  return kind;
+}
+
+function artifactProductionInstructions(
+  input: TeamRunInput,
+  subtask: Subtask,
+  kinds: readonly TeamArtifactKind[],
+): string {
+  if (kinds.length === 0) return "";
+  const sections = kinds.map((kind) => {
+    if (kind !== "scout_research") return "- " + kind;
+    return [
+      "- scout_research: post one valid team milestone event when your research is ready.",
+      "  The line must start with ::team-event:: followed by JSON with this exact shape:",
+      "  {",
+      '    "teamRunId": "' + input.teamRunId + '",',
+      '    "subtaskId": "' + subtask.subtaskId + '",',
+      '    "agentMemberId": "' + subtask.agentMemberId + '",',
+      '    "kind": "milestone",',
+      '    "summary": "research artifact ready: <domain or target>",',
+      '    "branch": "' + subtask.branch + '",',
+      '    "createdAt": "<current ISO timestamp>",',
+      '    "artifact": {',
+      '      "kind": "scout_research",',
+      '      "schemaVersion": 1,',
+      '      "siteSummary": "<what this business does, from the site/source>",',
+      '      "icp": "<specific buyer/user/persona>",',
+      '      "positioning": "<plain positioning angle and why-now>",',
+      '      "proofPoints": ["<specific claim from source>", "<specific claim from source>"],',
+      '      "competitors": ["<competitor or alternative>", "<competitor or alternative>"],',
+      '      "toneNotes": "<voice/tone notes observed from the source>",',
+      '      "sourceUrls": ["<source URL used>"]',
+      "    }",
+      "  }",
+    ].join("\n");
+  });
+  return [
+    "Required team artifact production contract",
+    "Do not mark this lane complete until the required artifact event is posted.",
+    ...sections,
+  ].join("\n");
+}
+
+function artifactConsumptionInstructions(artifacts: readonly TeamArtifact[]): string {
+  if (artifacts.length === 0) return "";
+  return [
+    "Required upstream team artifacts",
+    "The coordinator validated these artifacts before launch. Use their concrete facts in the work product.",
+    "Every draft you produce must cite which proofPoints or sourceUrls it used; do not invent claims outside this JSON.",
+    JSON.stringify(artifacts, null, 2),
+  ].join("\n");
 }
 
 /**
@@ -181,6 +244,17 @@ export class TeamCoordinator {
   ): Promise<SubtaskResult> {
     let visibilityDegraded = false;
     const lane = subtaskLaneSummary(subtask.task);
+    const prepared = await this.prepareTask(input, subtask);
+    if (!prepared.ok) {
+      const delivered = await this.announce(input, subtask, "blocked", prepared.error);
+      return {
+        subtaskId: subtask.subtaskId,
+        sessionId: null,
+        ok: false,
+        error: prepared.error,
+        visibilityDegraded: !delivered,
+      };
+    }
     let delivered = await this.announce(input, subtask, "started", `started: ${lane}`);
     visibilityDegraded = visibilityDegraded || !delivered;
     try {
@@ -189,7 +263,7 @@ export class TeamCoordinator {
         channelId: input.channelId,
         agentMemberId: subtask.agentMemberId,
         createdByMemberId: input.createdByMemberId,
-        task: subtask.task,
+        task: prepared.task,
         harness: subtask.preferredHarness,
         teamRunId: input.teamRunId,
         parentSpanId,
@@ -211,6 +285,39 @@ export class TeamCoordinator {
         visibilityDegraded,
       };
     }
+  }
+
+  private async prepareTask(
+    input: TeamRunInput,
+    subtask: Subtask,
+  ): Promise<{ ok: true; task: string } | { ok: false; error: string }> {
+    const requiredKinds = uniqueArtifactKinds(subtask.requiresArtifacts);
+    const producedKinds = uniqueArtifactKinds(subtask.producesArtifacts);
+    const sections: string[] = [];
+    if (requiredKinds.length > 0) {
+      const events = await this.readEvents(input.channelId, { limit: 200 });
+      const artifacts: TeamArtifact[] = [];
+      for (const kind of requiredKinds) {
+        const candidates = events
+          .filter((event) => event.teamRunId === input.teamRunId)
+          .map((event) => event.artifact)
+          .filter((candidate): candidate is TeamArtifact => candidate?.kind === kind);
+        const artifact = candidates.at(-1);
+        if (!artifact) {
+          return {
+            ok: false,
+            error: "blocked: missing required artifact: " + artifactLabel(kind),
+          };
+        }
+        artifacts.push(artifact);
+      }
+      sections.push(artifactConsumptionInstructions(artifacts));
+    }
+    if (producedKinds.length > 0) {
+      sections.push(artifactProductionInstructions(input, subtask, producedKinds));
+    }
+    if (sections.length === 0) return { ok: true, task: subtask.task };
+    return { ok: true, task: sections.join("\n\n") + "\n\n" + subtask.task };
   }
 
   /** Post a coordinator-authored lifecycle event to the team channel (queued on failure). */

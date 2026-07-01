@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { TeamEvent } from "@reload/shared";
-import { tryParseTeamEvent } from "../../src/team/protocol.js";
+import { encodeTeamEvent, tryParseTeamEvent } from "../../src/team/protocol.js";
 import { TeamCoordinator, type TeamLauncher } from "../../src/team/coordinator.js";
 import { TeamChannel } from "../../src/team/channel.js";
 import type { LaunchInput, SessionLogger } from "../../src/runtime/manager.js";
@@ -12,8 +12,8 @@ const silentLogger: SessionLogger = {
   error: () => {},
 };
 
-/** In-memory team channel: records posted events and replays them for readRecentEvents. */
-function makeChannel(): { channel: TeamChannel; events: () => TeamEvent[] } {
+/** In-memory team channel: records posted messages and replays them for readRecentEvents. */
+function makeChannel(): { channel: TeamChannel; events: () => TeamEvent[]; postBody: (body: string) => void } {
   const posted: { body: string }[] = [];
   const channel = new TeamChannel({
     poster: {
@@ -27,7 +27,10 @@ function makeChannel(): { channel: TeamChannel; events: () => TeamEvent[] } {
   });
   const events = () =>
     posted.map((p) => tryParseTeamEvent(p.body)).filter((e): e is TeamEvent => !!e);
-  return { channel, events };
+  const postBody = (body: string) => {
+    posted.push({ body });
+  };
+  return { channel, events, postBody };
 }
 
 /**
@@ -74,6 +77,27 @@ const runInput = (n: number) => ({
   teamRunId: "run_1",
   subtasks: subtasks(n),
 });
+
+const scoutResearchEvent: TeamEvent = {
+  teamRunId: "run_1",
+  subtaskId: "scout",
+  agentMemberId: "mem_scout",
+  kind: "milestone",
+  summary: "research artifact ready: acme.test",
+  branch: "b-scout",
+  createdAt: "2026-06-08T00:00:00.000Z",
+  artifact: {
+    kind: "scout_research",
+    schemaVersion: 1,
+    siteSummary: "Acme sells compliance workflow software.",
+    icp: "RevOps leaders at regulated B2B companies",
+    positioning: "A clean audit trail without spreadsheet wrangling.",
+    proofPoints: ["SOC2 page mentions audit exports", "Pricing page names RevOps"],
+    competitors: ["spreadsheet process", "legacy GRC suite"],
+    toneNotes: "Plain, direct, low-drama.",
+    sourceUrls: ["https://acme.test"],
+  },
+};
 
 describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure isolation)", () => {
   it("never exceeds the max-concurrency cap", async () => {
@@ -150,6 +174,134 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(launched.indexOf("echo")).toBeGreaterThan(launched.indexOf("quill"));
     expect(launched.indexOf("lens")).toBeGreaterThan(launched.indexOf("echo"));
     expect(joined).toEqual(expect.arrayContaining(["scout", "quill", "echo", "lens"]));
+  });
+
+  it("blocks a writer before launch when required Scout research is missing (#1540)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel, events } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft launch copy",
+          branch: "b-quill",
+          requiresArtifacts: ["scout_research"],
+        },
+      ],
+    });
+
+    expect(launcher.launched).toHaveLength(0);
+    expect(result.results[0]).toMatchObject({
+      subtaskId: "quill",
+      ok: false,
+      error: "blocked: missing required artifact: Scout research artifact",
+    });
+    expect(events().find((event) => event.kind === "blocked")?.summary).toBe(
+      "blocked: missing required artifact: Scout research artifact",
+    );
+  });
+
+  it("injects validated Scout research into downstream writer tasks (#1540)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft launch copy",
+          branch: "b-quill",
+          requiresArtifacts: ["scout_research"],
+        },
+      ],
+    });
+
+    expect(launcher.launched).toHaveLength(1);
+    expect(launcher.launched[0]?.task).toContain("Required upstream team artifacts");
+    expect(launcher.launched[0]?.task).toContain("Acme sells compliance workflow software.");
+    expect(launcher.launched[0]?.task).toContain("SOC2 page mentions audit exports");
+    expect(launcher.launched[0]?.task).toContain("Every draft you produce must cite");
+    expect(launcher.launched[0]?.task).toContain("draft launch copy");
+  });
+
+  it("accepts Scout research from a raw persisted agent marker message (#1540)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel, postBody } = makeChannel();
+    postBody(encodeTeamEvent(scoutResearchEvent));
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft launch copy",
+          branch: "b-quill",
+          requiresArtifacts: ["scout_research"],
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.task).toContain("Required upstream team artifacts");
+    expect(launcher.launched[0]?.task).toContain("sourceUrls");
+  });
+
+  it("adds exact Scout research artifact production instructions to producer tasks (#1540)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "scout",
+          agentMemberId: "mem_scout",
+          task: "research acme.test",
+          branch: "b-scout",
+          producesArtifacts: ["scout_research"],
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.task).toContain("Required team artifact production contract");
+    expect(launcher.launched[0]?.task).toContain('"teamRunId": "run_1"');
+    expect(launcher.launched[0]?.task).toContain('"subtaskId": "scout"');
+    expect(launcher.launched[0]?.task).toContain('"kind": "scout_research"');
+    expect(launcher.launched[0]?.task).toContain("research acme.test");
   });
 
   it("isolates a failing subtask — its peers still complete", async () => {
