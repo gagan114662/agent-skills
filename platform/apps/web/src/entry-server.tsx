@@ -164,6 +164,39 @@ function StaticPublicDashboard(): React.JSX.Element {
   );
 }
 
+function StaticNotFoundPage(): React.JSX.Element {
+  return (
+    <main className="splash" role="main" aria-labelledby="not-found-title">
+      <p className="auth__trial-badge">404</p>
+      <h1 id="not-found-title">Page not found</h1>
+      <p>
+        This link doesn't point to a live ipop page. Head back to the front door and start the
+        marketing team from there.
+      </p>
+      <div className="auth__actions">
+        <a className="btn btn--primary" href="/">
+          Go home
+        </a>
+        <a className="btn" href="/start">
+          Start
+        </a>
+      </div>
+    </main>
+  );
+}
+
+/** Vercel serves dist/404.html with HTTP 404 for unknown direct URLs. Keep it out of sitemap.xml. */
+export function prerenderNotFoundPage(): PrerenderPage {
+  return {
+    outFile: "404.html",
+    urlPath: "/404",
+    html: renderToStaticMarkup(<StaticNotFoundPage />),
+    title: "Page not found — ipop",
+    description: "This link does not point to a live ipop page.",
+    headExtra: '  <meta name="robots" content="noindex" />',
+  };
+}
+
 function StaticAppRouteShell(props: { eyebrow: string; title: string; body: string }): React.JSX.Element {
   return (
     <main className="splash">

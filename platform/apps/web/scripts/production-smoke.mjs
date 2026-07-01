@@ -32,7 +32,15 @@ export const ROUTE_CONTRACTS = [
   {
     path: "/dashboard",
     status: 200,
-    texts: ["CMO brief", "pipeline moved", "since last check-in", "agent work by business impact", "blocked channels"],
+    texts: [
+      "Marketing dashboard",
+      "today at a glance",
+      "since last check-in",
+      "work that matters",
+      "customer journey",
+      "where customers can come from",
+      "needs setup",
+    ],
   },
   {
     path: "/pricing",
@@ -62,7 +70,7 @@ export const ROUTE_CONTRACTS = [
   {
     path: "/does-not-exist",
     status: 404,
-    texts: [],
+    texts: ["Page not found", "Go home"],
   },
 ];
 
@@ -99,7 +107,7 @@ async function smokeOnePage({ page, baseUrl, contract, viewport, artifactDir }) 
 
   if (status !== contract.status) failures.push(`${contract.path} returned ${status}, expected ${contract.status}`);
 
-  if (status >= 200 && status < 400) {
+  if ((status >= 200 && status < 400) || status === contract.status) {
     const bodyText = (await page.locator("body").innerText({ timeout: 5000 })).trim();
     if (bodyText.length < 20) failures.push(`${contract.path} rendered a nearly blank body`);
 

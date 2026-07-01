@@ -7,7 +7,7 @@
  * body, and given a unique, front-loaded title + its own description + a breadcrumb.
  */
 import { describe, expect, it } from "vitest";
-import { buildSitemap, prerenderPages } from "./entry-server.js";
+import { buildSitemap, prerenderNotFoundPage, prerenderPages } from "./entry-server.js";
 import {
   BRAND,
   PRICING,
@@ -178,6 +178,18 @@ describe("prerenderPages — public marketing coverage (#467)", () => {
     expect(page.html).not.toContain("Signed-in workspace");
     expect(page.html).not.toContain("Review live ipop work receipts");
     expect(page.headExtra).toContain('"@type":"BreadcrumbList"');
+  });
+
+  it("generates a branded 404 document without adding it to the sitemap (#1534)", () => {
+    const page = prerenderNotFoundPage();
+    const sitemap = buildSitemap("https://ipop.ai", pages);
+
+    expect(page.outFile).toBe("404.html");
+    expect(page.title).toContain("Page not found");
+    expect(page.html).toContain("Page not found");
+    expect(page.html).toContain("Go home");
+    expect(page.headExtra).toContain("noindex");
+    expect(sitemap).not.toContain("<loc>https://ipop.ai/404</loc>");
   });
 
   it("keeps public route unfurls specific for demo and welcome (#1184)", () => {
