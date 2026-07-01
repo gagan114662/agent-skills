@@ -619,7 +619,7 @@ describe("WhatsApp room bridge (#1267)", () => {
       apiBaseUrl: "https://graph.test/v20.0",
       phoneNumberId: "phone-id",
       recipient: "15552223333",
-      text: expect.stringContaining("Scout, Quill, Echo, and Bid are starting"),
+      text: expect.stringContaining("Scout, Quill, Echo, and Bid are in the room"),
     });
     await waitForLaunches(4);
     await waitForSendContaining("started:");

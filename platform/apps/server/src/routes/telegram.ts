@@ -33,6 +33,21 @@ export interface TelegramRoutesOptions {
 
 const TELEGRAM_CHAT_ID_KEY = "TELEGRAM_CHAT_ID";
 
+function telegramConnectReply(status: "connected" | "already_connected_elsewhere" | "expired"): string {
+  if (status === "connected") {
+    return [
+      "Telegram is connected to your ipop marketing room.",
+      "Send a target here and Scout, Quill, Echo, and Bid will start in the same room.",
+      'Try: "market ipop.ai to SaaS founders" or "turn tomo.ai into a sharper launch plan".',
+      "Useful drafts, approval requests, and receipts will mirror back here.",
+    ].join("\n");
+  }
+  if (status === "already_connected_elsewhere") {
+    return "This Telegram chat is already connected to another ipop workspace. Disconnect it there before reconnecting.";
+  }
+  return "That Telegram connect link expired. Open https://ipop.ai/everyday, tap Connect Telegram, then press Start again.";
+}
+
 function statusCode(result: TelegramSendResult): number {
   if (result.status === "not_configured") return 503;
   if (result.status === "too_long" || result.status === "failed") return 400;
@@ -212,12 +227,7 @@ export async function telegramRoutes(app: FastifyInstance, opts: TelegramRoutesO
     if (!inbound.receipt && !inbound.providerReplyToMessageId) {
       const bound = await bindTelegramStartCode({ chatId: inbound.chatId, text: inbound.text });
       if (bound.status !== "not_start_code") {
-        const text =
-          bound.status === "connected"
-            ? "Telegram is connected to ipop. Send a brief here, and Scout, Quill, Echo, and Bid will work in the room."
-            : bound.status === "already_connected_elsewhere"
-              ? "This Telegram chat is already connected to another ipop workspace. Disconnect it there before reconnecting."
-              : "That Telegram connect link expired. Open https://ipop.ai/everyday and tap Connect Telegram again.";
+        const text = telegramConnectReply(bound.status);
         const sent = await opts.service.send({ chatId: inbound.chatId, text });
         return reply.code(bound.status === "connected" ? 200 : 409).send({ ...bound, providerReply: sent });
       }

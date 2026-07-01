@@ -547,7 +547,7 @@ describe("Telegram room bridge (#1267)", () => {
     expect(request.status).toBe("executed");
   });
 
-  it("blocks a first inbound room launch with a visible Codex auth reason (#1423)", async () => {
+  it("blocks a first inbound room launch with customer-safe agent runtime copy (#1423)", async () => {
     const owner = await newOwner();
     const enable = await app.inject({
       method: "POST",
@@ -581,16 +581,19 @@ describe("Telegram room bridge (#1267)", () => {
       botToken: "bot-token",
       apiBaseUrl: "https://telegram.test",
       chatId: "223344",
-      text: expect.stringContaining("Codex subscription auth is not connected"),
+      text: expect.stringContaining("the agent runtime is not connected"),
     });
     expect(sendMessage.mock.calls[0]?.[0].text).toContain("https://ipop.ai/everyday");
+    expect(sendMessage.mock.calls[0]?.[0].text).not.toContain("Codex subscription auth");
     const messages = await listChannelMessages(inbound.json().channelId);
-    expect(messages.map((m) => m.body)).toEqual(
+    const bodies = messages.map((m) => m.body);
+    expect(bodies).toEqual(
       expect.arrayContaining([
         "market ipop.ai",
-        expect.stringContaining("Blocked before starting the Codex marketing team"),
+        expect.stringContaining("The marketing team is ready"),
       ]),
     );
+    expect(bodies.join("\n")).not.toContain("Codex subscription auth");
   });
 
   it("binds Telegram from a bot-native /start code without exposing chat ids (#1267)", async () => {
@@ -635,8 +638,9 @@ describe("Telegram room bridge (#1267)", () => {
       botToken: "bot-token",
       apiBaseUrl: "https://telegram.test",
       chatId: "987654",
-      text: expect.stringContaining("Telegram is connected to ipop"),
+      text: expect.stringContaining("Telegram is connected to your ipop marketing room"),
     });
+    expect(sendMessage.mock.calls.at(-1)?.[0].text).toContain('Try: "market ipop.ai to SaaS founders"');
 
     const reused = await app.inject({
       method: "POST",
@@ -689,7 +693,7 @@ describe("Telegram room bridge (#1267)", () => {
       botToken: "bot-token",
       apiBaseUrl: "https://telegram.test",
       chatId: "334455",
-      text: expect.stringContaining("Scout, Quill, Echo, and Bid are starting"),
+      text: expect.stringContaining("Scout, Quill, Echo, and Bid are in the room"),
     });
     await waitForLaunches(4);
     await waitForSendContaining("started:");
