@@ -166,19 +166,32 @@ export function buildExternalProviderReadiness(input: ExternalProviderReadinessI
   const nowMs = input.nowMs ?? Date.now();
   const outbound = proofSummary(input.outboundProof, nowMs);
   const inbound = proofSummary(input.inboundProof, nowMs);
-  const inboundCorrelatesToOutbound = Boolean(
+  const sameProviderRoom = Boolean(
+    outbound &&
+      inbound &&
+      inbound.channelId === outbound.channelId &&
+      inbound.providerConversationId === outbound.providerConversationId,
+  );
+  const inboundRepliesToOutbound = Boolean(
     outbound &&
     inbound &&
-    inbound.channelId === outbound.channelId &&
-    inbound.providerConversationId === outbound.providerConversationId &&
+    sameProviderRoom &&
     inbound.replyToMessageId === outbound.messageId,
   );
+  const telegramInboundFirstLoop = Boolean(
+    input.provider === "telegram" &&
+      outbound &&
+      inbound &&
+      sameProviderRoom &&
+      new Date(outbound.createdAt).getTime() >= new Date(inbound.createdAt).getTime(),
+  );
+  const inboundCompletesLoop = inboundRepliesToOutbound || telegramInboundFirstLoop;
   const destinationConfigured = Boolean(input.destination);
   const configured = input.configured && Boolean(input.connection?.connected) && destinationConfigured;
   const state = roundTripState({
     configured,
     outbound,
-    inbound: inboundCorrelatesToOutbound ? inbound : null,
+    inbound: inboundCompletesLoop ? inbound : null,
   });
   const notes: string[] = [];
   if (input.missingConfig.length > 0) notes.push("deployment config missing: " + input.missingConfig.join(", "));
@@ -186,10 +199,20 @@ export function buildExternalProviderReadiness(input: ExternalProviderReadinessI
   if (input.connection?.connected && !destinationConfigured) notes.push("connected credential is missing the room destination");
   if (outbound?.stale) notes.push("latest outbound proof is stale");
   if (inbound?.stale) notes.push("latest inbound proof is stale");
-  if (outbound && inbound && !inboundCorrelatesToOutbound) {
-    notes.push("latest inbound proof is not threaded to the latest outbound room message");
+  if (outbound && inbound && !inboundCompletesLoop) {
+    notes.push(
+      input.provider === "telegram"
+        ? "latest Telegram inbound proof has not yet received a newer team response in the same room"
+        : "latest inbound proof is not threaded to the latest outbound room message",
+    );
   }
-  if (configured && state !== "healthy") notes.push("send and reply in the same external room to complete round-trip proof");
+  if (configured && state !== "healthy") {
+    notes.push(
+      input.provider === "telegram"
+        ? "send a Telegram brief and wait for the team response in the same chat to complete round-trip proof"
+        : "send and reply in the same external room to complete round-trip proof",
+    );
+  }
 
   return {
     provider: input.provider,
