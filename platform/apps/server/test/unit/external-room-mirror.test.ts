@@ -212,6 +212,47 @@ describe("external room mirror (#1424)", () => {
       workspaceId: "w1",
       channelId: "c1",
       message: message({
+        id: "session-start",
+        body: [
+          "🤖 session 019f1b57-330a-7340-a8c9-1cbe3a16de62 started: You are Scout in ipop's live marketing room.",
+          "",
+          "The owner started this from a messaging channel.",
+          "",
+          "Owner brief: no internal logs.",
+        ].join("\n"),
+      }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({
+        id: "shell-snapshot-error",
+        body:
+          "2026-07-01T01:42:14.462484Z ERROR codex_core::shell_snapshot: Shell snapshot validation failed: /home/reload/.codex/shell_snapshots/tmp: Syntax error",
+      }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({ id: "stdin", body: "Reading additional input from stdin..." }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({
+        id: "skills-install-error",
+        body:
+          "2026-07-01T01:42:09.028272Z ERROR codex_core_skills::service: failed to install system skills: Directory not empty",
+      }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({
         id: "launch-plan",
         body: [
           "Receipt left: [scout-launch-receipt.md](/home/reload/agent-workspaces/run/scout-launch-receipt.md)",
@@ -230,7 +271,9 @@ describe("external room mirror (#1424)", () => {
     const mirrored = telegramSend.mock.calls[0]?.[0].text ?? "";
     expect(mirrored).toContain("Scout: Best 3-step launch plan:");
     expect(mirrored).toContain("1. Run a Telegram-first proof sprint.");
-    expect(mirrored).not.toMatch(/session completed|curl|browser-backed|Receipt left|\/home\/reload/);
+    expect(mirrored).not.toMatch(
+      /session completed|session .*started|shell snapshot|stdin|system skills|curl|browser-backed|Receipt left|\/home\/reload/,
+    );
   });
 
   it("deduplicates identical Telegram mirror bursts in the same room", async () => {
