@@ -228,9 +228,7 @@ function GroupChatHero({
                   <span className="everyday-msg__at">{entry.at}</span>
                 </p>
                 {entry.kind === "agent-line" ? (
-                  <p className="everyday-msg__text">
-                    {entry.agent === memberName ? entry.text : customerVisibleAgentText(entry.text)}
-                  </p>
+                  <p className="everyday-msg__text">{customerVisibleAgentText(entry.text)}</p>
                 ) : (
                   <DeliverableBody deliverable={entry.deliverable} />
                 )}
@@ -710,11 +708,36 @@ function ApprovalQueue({
   );
 }
 
-function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
+function dashboardConnectorCta(
+  connectors: readonly EverydayConnector[],
+): EverydayConnector | null {
+  const needsConnection = (connector: EverydayConnector): boolean => connector.status !== "connected";
+  return (
+    connectors.find((connector) => connector.id === "telegram_room" && needsConnection(connector)) ??
+    connectors.find((connector) => /telegram/i.test(connector.name) && needsConnection(connector)) ??
+    connectors.find((connector) => /whatsapp|imessage/i.test(connector.name) && needsConnection(connector)) ??
+    connectors.find(needsConnection) ??
+    null
+  );
+}
+
+function connectorCtaLabel(connector: EverydayConnector): string {
+  if (connector.actionLabel.toLowerCase() === "connect") return "Connect " + connector.name;
+  return connector.actionLabel;
+}
+
+function WorkSummary({
+  data,
+  onConnectorConnect,
+}: {
+  data: EverydayData;
+  onConnectorConnect?: (id: string) => void;
+}): React.JSX.Element {
   const d = EVERYDAY.dashboard;
   const brief = data.marketingBrief ?? fallbackMarketingBrief(data);
   const latest = data.transparency.slice(-3).reverse();
   const seatUsage = starterSeatUsage(brief);
+  const channelCta = onConnectorConnect ? dashboardConnectorCta(data.connectors) : null;
   return (
     <section id="dashboard" className="everyday-dashboard" aria-label={d.heading}>
       <div className="everyday-dashboard__head">
@@ -819,6 +842,21 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
             </li>
           ))}
         </ol>
+        {channelCta && (
+          <div className="everyday-dashboard__connect" role="group" aria-label="connect a messaging channel">
+            <div>
+              <strong>{channelCta.name} is the next unblocker</strong>
+              <span>{channelCta.detail}</span>
+            </div>
+            <button
+              type="button"
+              className="everyday-btn everyday-btn--pop"
+              onClick={() => onConnectorConnect?.(channelCta.id)}
+            >
+              {connectorCtaLabel(channelCta)}
+            </button>
+          </div>
+        )}
       </div>
       <div className="everyday-dashboard__funnel">
         <p className="everyday-eyebrow">{d.funnel}</p>
@@ -1630,7 +1668,7 @@ export function EverydayShell({
     <div className="everyday-shell" style={experienceTokenStyle("everyday")}>
       <main className={dashboardOnly ? "everyday-shell__main everyday-shell__main--dashboard" : "everyday-shell__main"}>
         {dashboardFirst && (
-          <WorkSummary data={{ ...data, room, thread, approvals: pending }} />
+          <WorkSummary data={{ ...data, room, thread, approvals: pending }} onConnectorConnect={onConnectorConnect} />
         )}
         {!dashboardOnly && (
           <>
@@ -1644,7 +1682,7 @@ export function EverydayShell({
               imessageStatus={imessageStatus}
             />
             {!dashboardFirst && (
-              <WorkSummary data={{ ...data, room, thread, approvals: pending }} />
+              <WorkSummary data={{ ...data, room, thread, approvals: pending }} onConnectorConnect={onConnectorConnect} />
             )}
             <ConnectorSetup
               connectors={data.connectors}

@@ -2,23 +2,16 @@
  * Public company information (#866). The component is structural only; legal facts and labels live in
  * brand.ts so deployment-specific entity details can be overridden without changing chrome code.
  */
-import { BRAND, COMPANY } from "../../brand.js";
+import { COMPANY } from "../../brand.js";
 import { Link } from "../../routing.js";
+import { PublicDoorNav } from "../onboarding/PublicDoorNav.js";
+import { TELEGRAM_BOT_URL } from "../onboarding/messaging-entry.js";
 import { Wordmark } from "../Wordmark.js";
 
 export function CompanyPage(): React.JSX.Element {
   return (
     <div className="landing landing--security">
-      <header className="landing__nav">
-        <Link href="/" className="landing__brand" aria-label={BRAND.name}>
-          <Wordmark />
-        </Link>
-        <nav className="landing__nav-actions">
-          <Link href="/" className="btn btn--primary landing__nav-cta">
-            {COMPANY.backCta}
-          </Link>
-        </nav>
-      </header>
+      <PublicDoorNav className="landing__nav" startHref={TELEGRAM_BOT_URL} />
 
       <main>
         <section className="landing__hero landing__security-hero" aria-labelledby="company-title">

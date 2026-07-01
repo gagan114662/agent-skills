@@ -116,6 +116,13 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
               text: `/bin/sh -lc "sed -n '1,220p' ipop_homepage_clarity_receipt.md"`,
             },
             {
+              id: "leaked-member-tool",
+              kind: "agent-line",
+              agent: "gagan",
+              at: "now",
+              text: `/bin/sh -lc "node -e fetch('https://ipop.ai/').then(r=>r.text())"`,
+            },
+            {
               id: "leaked-deliverable",
               kind: "deliverable",
               agent: "Quill",
@@ -133,8 +140,9 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
 
     const room = screen.getByRole("region", { name: EVERYDAY.room.heading });
     expect(within(room).queryByText(/\/bin\/sh -lc/i)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/node -e/i)).not.toBeInTheDocument();
     expect(within(room).queryByText(/ipop_homepage_clarity_receipt\.md/i)).not.toBeInTheDocument();
-    expect(within(room).getAllByText(EVERYDAY.thread.internalToolActivity)).toHaveLength(2);
+    expect(within(room).getAllByText(EVERYDAY.thread.internalToolActivity)).toHaveLength(3);
   });
 
   it("starts the room from one input and lets the user chat into the room", async () => {
@@ -306,6 +314,33 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText("real acquisition channel")).toBeInTheDocument();
     expect(within(dashboard).getByText("blocked work cannot create leads until a provider is connected")).toBeInTheDocument();
     expect(within(dashboard).getByText("0 customers")).toBeInTheDocument();
+  });
+
+  it("offers a channel connect action from the focused dashboard when connectors are blocked (#1522)", () => {
+    const onConnectorConnect = vi.fn();
+    render(
+      <EverydayShell
+        data={emptyData({
+          connectors: [
+            {
+              id: "telegram_room",
+              group: "visibility",
+              name: "Telegram room",
+              status: "available",
+              detail: "open the bot-native connect flow.",
+              actionLabel: "connect",
+            },
+          ],
+        })}
+        dashboardFirst
+        dashboardOnly
+        onConnectorConnect={onConnectorConnect}
+      />,
+    );
+
+    const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
+    fireEvent.click(within(dashboard).getByRole("button", { name: /connect telegram room/i }));
+    expect(onConnectorConnect).toHaveBeenCalledWith("telegram_room");
   });
 
   it("shows all room visibility lanes without pretending external transports are live", () => {
