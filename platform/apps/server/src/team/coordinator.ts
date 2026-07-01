@@ -29,6 +29,8 @@ export interface Subtask {
   task: string;
   /** The branch the agent works on — recorded on the subtask's team events. */
   branch: string;
+  /** Optional ordered phase. All phase 1 work completes before phase 2 starts, etc. */
+  phase?: number;
   /** Optional per-subtask harness override. Codex operator lanes use this to make Codex the actual brain. */
   preferredHarness?: HarnessKind;
 }
@@ -84,6 +86,11 @@ function subtaskLaneSummary(task: string): string {
   return task;
 }
 
+function normalizePhase(phase: number | undefined): number {
+  if (typeof phase !== "number" || !Number.isInteger(phase) || phase <= 0) return 1;
+  return phase;
+}
+
 /**
  * TeamCoordinator — runs N agents in parallel on one feature, each on its own subtask/branch,
  * keeping them in the loop through the shared team channel (Team Mode).
@@ -115,18 +122,28 @@ export class TeamCoordinator {
     const results: SubtaskResult[] = new Array<SubtaskResult>(input.subtasks.length);
 
     const body = async (ctx: TeamSpanContext): Promise<{ completed: number; failed: number }> => {
-      let next = 0;
-      const worker = async (): Promise<void> => {
-        for (;;) {
-          const i = next++;
-          const subtask = input.subtasks[i];
-          if (!subtask) return;
-          results[i] = await this.runSubtask(input, subtask, ctx.parentSpanId);
-        }
-      };
-      // At most `maxConcurrency` sessions in flight; never spawn more workers than subtasks.
-      const workers = Math.max(1, Math.min(this.deps.maxConcurrency, input.subtasks.length));
-      await Promise.all(Array.from({ length: workers }, () => worker()));
+      const entries = input.subtasks
+        .map((subtask, index) => ({
+          subtask,
+          index,
+          phase: normalizePhase(subtask.phase),
+        }))
+        .sort((a, b) => (a.phase === b.phase ? a.index - b.index : a.phase - b.phase));
+      const phases = [...new Set(entries.map((entry) => entry.phase))];
+      for (const phase of phases) {
+        const phaseEntries = entries.filter((entry) => entry.phase === phase);
+        let next = 0;
+        const worker = async (): Promise<void> => {
+          for (;;) {
+            const entry = phaseEntries[next++];
+            if (!entry) return;
+            results[entry.index] = await this.runSubtask(input, entry.subtask, ctx.parentSpanId);
+          }
+        };
+        // At most maxConcurrency sessions in flight; never spawn more workers than phase subtasks.
+        const workers = Math.max(1, Math.min(this.deps.maxConcurrency, phaseEntries.length));
+        await Promise.all(Array.from({ length: workers }, () => worker()));
+      }
       const completed = results.filter((r) => r.ok).length;
       return { completed, failed: results.length - completed };
     };

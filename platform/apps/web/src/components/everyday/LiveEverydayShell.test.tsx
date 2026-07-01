@@ -702,6 +702,15 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(channelId).toBe("c1");
     expect(subtasks).toHaveLength(5);
     expect(subtasks.every((subtask) => subtask.harness === "codex")).toBe(true);
+    const quill = subtasks.find((subtask) => subtask.branch.startsWith("ipop-quill-"));
+    const echo = subtasks.find((subtask) => subtask.branch.startsWith("ipop-echo-"));
+    const lens = subtasks.find((subtask) => subtask.branch.startsWith("ipop-lens-"));
+    expect(quill?.phase).toBe(1);
+    expect(echo?.phase).toBe(2);
+    expect(lens?.phase).toBe(3);
+    expect(quill?.task).toContain("You own the drafts");
+    expect(quill?.task).toContain("Produce named, approval-ready draft assets");
+    expect(lens?.task).toContain("If a required draft is missing");
     for (const subtask of subtasks) {
       expect(subtask.task).toContain("1. Task context");
       expect(subtask.task).toContain("2. Tone context");

@@ -137,6 +137,21 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
               text: `/bin/sh -lc "node -e fetch('https://ipop.ai/').then(r=>r.text())"`,
             },
             {
+              id: "leaked-codex-tool",
+              kind: "agent-line",
+              agent: "Lens",
+              at: "now",
+              text: `🔧 /bin/sh -lc "node - <<'NODE'\nfetch('https://ipop.ai/')\nNODE"`,
+            },
+            {
+              id: "team-event-json",
+              kind: "agent-line",
+              agent: "Scout",
+              at: "now",
+              text:
+                '::team-event:: {"teamRunId":"tr1","subtaskId":"s1","agentMemberId":"a1","kind":"started","summary":"started: Scout site read","branch":"b","createdAt":"2026-07-01T00:00:00.000Z"}',
+            },
+            {
               id: "leaked-deliverable",
               kind: "deliverable",
               agent: "Quill",
@@ -156,7 +171,9 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(room).queryByText(/\/bin\/sh -lc/i)).not.toBeInTheDocument();
     expect(within(room).queryByText(/node -e/i)).not.toBeInTheDocument();
     expect(within(room).queryByText(/ipop_homepage_clarity_receipt\.md/i)).not.toBeInTheDocument();
-    expect(within(room).getAllByText(EVERYDAY.thread.internalToolActivity)).toHaveLength(3);
+    expect(within(room).queryByText(/::team-event::/i)).not.toBeInTheDocument();
+    expect(within(room).getByText("started: Scout site read")).toBeInTheDocument();
+    expect(within(room).getAllByText(EVERYDAY.thread.internalToolActivity)).toHaveLength(4);
   });
 
   it("starts the room from one input and lets the user chat into the room", async () => {
@@ -261,11 +278,8 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText("usable asset ready for a connected channel")).toBeInTheDocument();
     expect(within(dashboard).getByText("campaigns running")).toBeInTheDocument();
     expect(within(dashboard).getByText("team members active")).toBeInTheDocument();
-    expect(within(dashboard).getByText("Upgrade to keep the whole agent room active")).toBeInTheDocument();
-    expect(within(dashboard).getByRole("link", { name: "View Pro" })).toHaveAttribute(
-      "href",
-      "/pricing?plan=pro",
-    );
+    expect(within(dashboard).queryByText("Upgrade to keep the whole agent room active")).not.toBeInTheDocument();
+    expect(within(dashboard).queryByRole("link", { name: "View Pro" })).not.toBeInTheDocument();
     expect(within(dashboard).getByText("monthly work budget")).toBeInTheDocument();
     expect(within(dashboard).getByText("team members")).toBeInTheDocument();
     expect(within(dashboard).getByText("connected channels")).toBeInTheDocument();

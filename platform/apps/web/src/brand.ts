@@ -649,10 +649,10 @@ export const LANDING = {
       price: "$49",
       tagline: "A daily checkup for one campaign.",
       dailyValue: "Site read, quick-win plan, and one draft your team can use.",
-      dailyLimit: "1 active campaign, 3 agents, $200/mo work cap.",
+      dailyLimit: "1 active campaign, 5 agents, $200/mo work cap.",
       upgradeTrigger: "Upgrade when you want the agents to keep going after that first lane fills.",
       featured: false,
-      highlights: ["Daily SEO/content/social check-ins", "3 agent seats for one focused lane", "$200/mo agent-work cap with receipts", "Approvals + audit trail included"],
+      highlights: ["Daily SEO/content/social check-ins", "5 agent seats for the default room", "$200/mo agent-work cap with receipts", "Approvals + audit trail included"],
     },
     {
       key: "pro",
@@ -738,7 +738,7 @@ export const LAUNCH_READINESS = {
       "The public plans match the billing catalog: Starter $49, Pro $199, Agency $499. Each plan carries " +
       "agent seats and a monthly session cap so upgrade moments can point at the exact value unlocked.",
     limits: [
-      "Starter: 3 agent seats, $200 monthly session cap",
+      "Starter: 5 agent seats, $200 monthly session cap",
       "Pro: 10 agent seats, $1,000 monthly session cap",
       "Agency: 30 agent seats, $5,000 monthly session cap",
     ],
@@ -2036,7 +2036,7 @@ export const FAQ = {
     },
     {
       q: "What does it cost, and what's the difference between Starter and Pro?",
-      a: "Start, no card. Starter is $49/month for a daily checkup on one campaign: site read, quick-win plan, one usable draft, three agent seats, a $200 monthly work cap, approvals, and the audit trail. Pro is $199/month for the everyday growth room: ten seats, a $1,000 monthly work cap, three campaign lanes, priority autonomy, and deploy-to-live. Upgrade when the first lane is working and you want more departments moving without waiting in line.",
+      a: "Start, no card. Starter is $49/month for a daily checkup on one campaign: site read, quick-win plan, one usable draft, five agent seats, a $200 monthly work cap, approvals, and the audit trail. Pro is $199/month for the everyday growth room: ten seats, a $1,000 monthly work cap, three campaign lanes, priority autonomy, and deploy-to-live. Upgrade when the first lane is working and you want more departments moving without waiting in line.",
     },
     {
       q: "What is the refund policy and support SLA?",

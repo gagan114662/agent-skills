@@ -80,6 +80,13 @@ const LANE_BY_HANDLE: Record<(typeof LAUNCH_HANDLES)[number], string> = {
   bid: "paid acquisition plan",
 };
 
+const PHASE_BY_HANDLE: Record<(typeof LAUNCH_HANDLES)[number], number> = {
+  scout: 1,
+  quill: 1,
+  echo: 2,
+  bid: 2,
+};
+
 function roomUrl(appBaseUrl?: string): string {
   const base = appBaseUrl?.trim() || publicAppOrigin();
   return new URL("/everyday", base).toString();
@@ -127,6 +134,7 @@ function buildSubtask(handle: (typeof LAUNCH_HANDLES)[number], agentMemberId: st
     subtaskId: newId(),
     agentMemberId,
     branch: "messaging-" + handle + "-" + newId().slice(0, 8),
+    phase: PHASE_BY_HANDLE[handle],
     preferredHarness: "codex",
     task:
       "You are " +

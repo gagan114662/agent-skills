@@ -13,6 +13,8 @@ import type {
 import type { AppState, LiveSessionLite } from "../../store/store.js";
 import { authorLabel } from "../../store/store.js";
 import { useAppState, useStore } from "../../store/StoreContext.js";
+import { useLiveChannelMessages } from "../console/useLiveChannelMessages.js";
+import { useLiveMissionControl } from "../console/useLiveMissionControl.js";
 import {
   clearPendingFirstRunReceipt,
   readPendingFirstRunReceipt,
@@ -27,6 +29,8 @@ import {
   type LaunchReadinessItem,
   type ThreadEntry,
 } from "./everyday-data.js";
+
+const STARTER_AGENT_SEAT_LIMIT = 5;
 
 function navigateToTelegramStart(link: Awaited<ReturnType<typeof api.startTelegramConnection>>): void {
   if (link.startUrl) {
@@ -247,9 +251,12 @@ function withFirstRunReceipt(
         },
         {
           label: "team members active",
-          value: String(data.room.length) + " / 3",
-          detail: data.room.length > 3 ? "upgrade to keep the whole room active" : "inside starter team limit",
-          tone: data.room.length > 3 ? "warn" : "neutral",
+          value: String(data.room.length) + " / " + STARTER_AGENT_SEAT_LIMIT,
+          detail:
+            data.room.length > STARTER_AGENT_SEAT_LIMIT
+              ? "upgrade to keep the whole room active"
+              : "inside starter team limit",
+          tone: data.room.length > STARTER_AGENT_SEAT_LIMIT ? "warn" : "neutral",
           proof: "workspace agent lane state",
         },
         {
@@ -504,6 +511,7 @@ type RoomAgentRole = "Scout" | "Quill" | "Echo" | "Lens" | "Codex";
 interface RoomAgentSpec {
   readonly role: RoomAgentRole;
   readonly lane: string;
+  readonly phase: number;
   readonly immediateRequest: (goal: string) => string;
   readonly outputFormat: readonly string[];
 }
@@ -512,6 +520,7 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
   {
     role: "Scout",
     lane: "insight mining",
+    phase: 1,
     immediateRequest: (goal) =>
       "Mine customer/category/product/user/time/space insights for " +
       goal +
@@ -525,19 +534,22 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
   {
     role: "Quill",
     lane: "creative platform",
+    phase: 1,
     immediateRequest: (goal) =>
-      "Turn the strongest insight into a distinctive marketing platform for " +
+      "You own the drafts. Read the target site yourself if Scout's handoff is not visible yet, then turn the strongest insight into a distinctive marketing platform for " +
       goal +
-      ". Reference award-winning work from another category and adapt the mechanism, not the surface.",
+      ". Produce named, approval-ready draft assets for every format the owner requested. Reference award-winning work from another category and adapt the mechanism, not the surface.",
     outputFormat: [
       "campaign platform",
       "why it is not generic AI copy",
+      "named draft artifacts with format labels",
       "first asset draft ready for approval",
     ],
   },
   {
     role: "Echo",
     lane: "distribution",
+    phase: 2,
     immediateRequest: (goal) =>
       "Plan the first outreach/content distribution moves for " +
       goal +
@@ -551,10 +563,11 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
   {
     role: "Lens",
     lane: "taste and proof",
+    phase: 3,
     immediateRequest: (goal) =>
-      "Review the work for brand taste, originality, proof, and anti-slop quality for " +
+      "Review Scout, Quill, and Echo's room artifacts for brand taste, originality, proof, and anti-slop quality for " +
       goal +
-      ". Challenge weak insights before anything ships.",
+      ". If a required draft is missing, name the missing artifact and the agent lane that failed instead of reviewing an empty workspace.",
     outputFormat: [
       "taste verdict",
       "specific slop risks to remove",
@@ -564,6 +577,7 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
   {
     role: "Codex",
     lane: "codex_operator_lane",
+    phase: 4,
     immediateRequest: (goal) =>
       "Act as the implementation operator for the marketing room. Convert approved product, website, workflow, connector, or observability decisions into implementation tasks, PRs, issues, or verified fixes for " +
       goal +
@@ -698,6 +712,7 @@ async function launchCodexRoomRun(
       agentMemberId,
       task: structuredRoomTask(spec, goal),
       branch: "ipop-" + slug(spec.role) + "-" + slug(goal),
+      phase: spec.phase,
       harness: "codex",
     });
   }
@@ -764,11 +779,26 @@ export function LiveEverydayShell({
 }: { dashboardFirst?: boolean; dashboardOnly?: boolean; theme?: EverydayShellTheme } = {}): React.JSX.Element {
   const state = useAppState();
   const store = useStore();
+  useLiveChannelMessages(state.activeChannelId ?? null);
+  const mission = useLiveMissionControl(state.identity?.workspaceId);
   const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
   const [imessageStatus, setIMessageStatus] = useState<IMessageStatusResponse | null>(null);
   const [firstRun, setFirstRun] = useState<FirstRunReceiptDto | null>(null);
   const [codexStatus, setCodexStatus] = useState<CodexSubscriptionStatus | null>(null);
   const [fleetPaused, setFleetPaused] = useState(false);
+
+  useEffect(() => {
+    const active = (mission.data?.sessions ?? [])
+      .filter((session) => session.status === "running" || session.status === "provisioning")
+      .map((session) => ({
+        id: session.id,
+        channelId: session.channelId,
+        agentMemberId: session.agentMemberId,
+        status: session.status,
+        agentStatus: session.agentStatus,
+      }));
+    store.setLiveSessions(active);
+  }, [mission.data, store]);
 
   async function refreshConnections(): Promise<void> {
     const response = await api.getConnections();

@@ -84,11 +84,11 @@ export const PLANS: readonly Plan[] = [
   {
     key: "starter",
     name: "Starter",
-    tagline: "Hire your first three agents and see what a tiny team can ship.",
+    tagline: "Hire your first five-agent room and see what a tiny team can ship.",
     priceCents: 4900,
     currency: "usd",
     interval: "month",
-    agentSeats: 3,
+    agentSeats: 5,
     monthlySessionBudgetCents: 20_000,
     fleetSize: 1,
     productLimits: {
@@ -99,11 +99,11 @@ export const PLANS: readonly Plan[] = [
       dashboardHistoryDays: 14,
     },
     dailyValue: "A daily marketing checkup: site read, quick-win plan, and one draft your team can use.",
-    dailyLimit: "1 active campaign, 3 agents, and a $200 monthly agent-work cap.",
+    dailyLimit: "1 active campaign, 5 agents, and a $200 monthly agent-work cap.",
     upgradeTrigger: "Upgrade when you want the agents to keep working after the first campaign lane fills up.",
     highlights: [
       "Daily SEO/content/social check-ins",
-      "3 agent seats for one focused lane",
+      "5 agent seats for the default room",
       "$200/mo agent-work cap with receipts",
       "Approvals + audit trail included",
     ],

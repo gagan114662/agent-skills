@@ -544,6 +544,7 @@ export interface TeamRunSubtaskInput {
   agentMemberId: string;
   task: string;
   branch: string;
+  phase?: number;
   harness?: TeamRunHarness;
 }
 
@@ -554,6 +555,7 @@ export interface TeamRunResponse {
     subtaskId: string;
     agentMemberId: string;
     branch: string;
+    phase?: number;
     harness: TeamRunHarness | null;
   }>;
 }

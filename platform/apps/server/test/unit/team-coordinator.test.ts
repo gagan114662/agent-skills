@@ -114,6 +114,44 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(kinds.filter((k) => k === "done")).toHaveLength(3);
   });
 
+  it("runs higher phases only after earlier phases finish (#1536)", async () => {
+    const launched: string[] = [];
+    const joined: string[] = [];
+    const launcher: TeamLauncher = {
+      async launch(input) {
+        launched.push(input.task);
+        return { id: input.task };
+      },
+      async join(id) {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        joined.push(id);
+      },
+    };
+    const { channel } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 4,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(4),
+      subtasks: [
+        { subtaskId: "scout", agentMemberId: "mem_scout", task: "scout", branch: "b-scout", phase: 1 },
+        { subtaskId: "quill", agentMemberId: "mem_quill", task: "quill", branch: "b-quill", phase: 1 },
+        { subtaskId: "echo", agentMemberId: "mem_echo", task: "echo", branch: "b-echo", phase: 2 },
+        { subtaskId: "lens", agentMemberId: "mem_lens", task: "lens", branch: "b-lens", phase: 3 },
+      ],
+    });
+
+    expect(new Set(launched.slice(0, 2))).toEqual(new Set(["scout", "quill"]));
+    expect(launched.indexOf("echo")).toBeGreaterThan(launched.indexOf("quill"));
+    expect(launched.indexOf("lens")).toBeGreaterThan(launched.indexOf("echo"));
+    expect(joined).toEqual(expect.arrayContaining(["scout", "quill", "echo", "lens"]));
+  });
+
   it("isolates a failing subtask — its peers still complete", async () => {
     const launcher = new FakeLauncher((input) => input.task === "do part 1");
     const { channel, events } = makeChannel();
