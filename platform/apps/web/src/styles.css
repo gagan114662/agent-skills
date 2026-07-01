@@ -9589,10 +9589,6 @@ select:focus-visible {
   border-color: color-mix(in srgb, #bdf58b 48%, var(--ed-border));
   color: #bdf58b;
 }
-.everyday-dashboard__metric small[data-proof-kind="dogfood"] {
-  border-color: color-mix(in srgb, var(--ed-pop) 48%, var(--ed-border));
-  color: var(--ed-pop);
-}
 .everyday-dashboard__metric small[data-proof-kind="sample"] {
   border-color: color-mix(in srgb, #ffe082 44%, var(--ed-border));
   color: #ffe082;

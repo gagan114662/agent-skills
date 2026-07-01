@@ -140,28 +140,28 @@ function withFirstRunReceipt(
       headline: firstRun.finding,
       executiveSummary: [
         {
-          label: "work shipped today",
+          label: "visible work",
           value: "1",
           detail: "first useful result captured",
           tone: "warn",
           proof: firstRun.receipt,
         },
         {
-          label: "pipeline moved",
+          label: "new customers",
           value: "0",
           detail: "no customer/revenue movement yet",
           tone: "bad",
           proof: "north-star customer row is unchanged",
         },
         {
-          label: "approvals waiting",
+          label: "needs your review",
           value: String(data.approvals.length),
           detail: data.approvals.length ? "owner decision needed" : "no owner queue",
           tone: data.approvals.length ? "warn" : "neutral",
           proof: "workspace approval queue",
         },
         {
-          label: "blocked channels",
+          label: "channels to connect",
           value: "1",
           detail: "external connector proof required",
           tone: "bad",
@@ -190,11 +190,11 @@ function withFirstRunReceipt(
           proof: firstRun.receipt,
         },
         {
-          label: "agent artifacts",
+          label: "drafts ready",
           value: "1",
           detail: firstRun.artifactTitle,
           tone: "good",
-          proofKind: "dogfood",
+          proofKind: "live",
           proof: firstRun.artifactSummary,
         },
         {
@@ -206,7 +206,7 @@ function withFirstRunReceipt(
           proof: "first-run receipt persisted",
         },
         {
-          label: "blocked sends",
+          label: "sent without approval",
           value: "0",
           detail: "nothing external sent without approval",
           tone: "neutral",
@@ -239,21 +239,21 @@ function withFirstRunReceipt(
       ],
       capacity: [
         {
-          label: "active campaign lanes",
+          label: "campaigns running",
           value: "1 / 1",
           detail: "upgrade when a second lane queues",
           tone: "warn",
           proof: firstRun.receipt,
         },
         {
-          label: "agent seats used",
+          label: "team members active",
           value: String(data.room.length) + " / 3",
           detail: data.room.length > 3 ? "upgrade to keep the whole room active" : "inside starter team limit",
           tone: data.room.length > 3 ? "warn" : "neutral",
           proof: "workspace agent lane state",
         },
         {
-          label: "monthly work cap",
+          label: "monthly work budget",
           value: "$0 / $200",
           detail: "no paid distribution approved yet",
           tone: "neutral",

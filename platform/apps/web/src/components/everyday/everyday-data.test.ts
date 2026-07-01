@@ -4,7 +4,8 @@
  * timestamp on every external action — the surface contract the shell renders).
  */
 import { describe, expect, it } from "vitest";
-import { compactCount, defaultAgentRoom, defaultConnectors, partOfDay, seedEveryday, signedDelta } from "./everyday-data.js";
+import { compactCount, defaultAgentRoom, defaultConnectors, partOfDay, signedDelta } from "./everyday-data.js";
+import { seedEveryday } from "./__fixtures__/everyday-fixtures.js";
 
 describe("partOfDay (#784)", () => {
   it("buckets the local hour into morning / afternoon / evening", () => {

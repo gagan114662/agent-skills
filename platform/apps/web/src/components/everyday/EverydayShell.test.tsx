@@ -10,7 +10,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { EverydayShell, type EverydayApprovalActions } from "./EverydayShell.js";
-import { ipopDogfoodEveryday, seedEveryday, type ApprovalCard, type EverydayData } from "./everyday-data.js";
+import { type ApprovalCard, type EverydayData } from "./everyday-data.js";
+import { ipopDogfoodEveryday, seedEveryday } from "./__fixtures__/everyday-fixtures.js";
 import { EVERYDAY } from "../../brand.js";
 import { APP_ROUTES } from "../../routing.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
@@ -225,7 +226,7 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(screen.queryByText(/Codex/i)).not.toBeInTheDocument();
   });
 
-  it("shows a CMO-style dashboard brief with pipeline, channels, blockers, and receipts", () => {
+  it("shows a plain-language marketing dashboard with channels, decisions, and receipts", () => {
     render(<EverydayShell data={seedEveryday()} />);
     const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
     expect(dashboard).toHaveAttribute("id", "dashboard");
@@ -239,22 +240,22 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText(EVERYDAY.dashboard.decisions)).toBeInTheDocument();
     expect(within(dashboard).getByText(EVERYDAY.dashboard.next)).toBeInTheDocument();
     expect(within(dashboard).getByText("customers")).toBeInTheDocument();
-    expect(within(dashboard).getByText("work shipped today")).toBeInTheDocument();
-    expect(within(dashboard).getByText("pipeline moved")).toBeInTheDocument();
-    expect(within(dashboard).getByText("approvals waiting")).toBeInTheDocument();
-    expect(within(dashboard).getByText("blocked channels")).toBeInTheDocument();
+    expect(within(dashboard).getByText("visible work")).toBeInTheDocument();
+    expect(within(dashboard).getByText("new customers")).toBeInTheDocument();
+    expect(within(dashboard).getByText("needs your review")).toBeInTheDocument();
+    expect(within(dashboard).getByText("channels to connect")).toBeInTheDocument();
     expect(within(dashboard).getAllByText("first campaign platform").length).toBeGreaterThan(0);
     expect(within(dashboard).getByText("usable asset ready for a connected channel")).toBeInTheDocument();
-    expect(within(dashboard).getByText("active campaign lanes")).toBeInTheDocument();
-    expect(within(dashboard).getByText("agent seats used")).toBeInTheDocument();
+    expect(within(dashboard).getByText("campaigns running")).toBeInTheDocument();
+    expect(within(dashboard).getByText("team members active")).toBeInTheDocument();
     expect(within(dashboard).getByText("Upgrade to keep the whole agent room active")).toBeInTheDocument();
     expect(within(dashboard).getByRole("link", { name: "View Pro" })).toHaveAttribute(
       "href",
       "/pricing?plan=pro",
     );
-    expect(within(dashboard).getByText("monthly work cap")).toBeInTheDocument();
-    expect(within(dashboard).getByText("team lanes")).toBeInTheDocument();
-    expect(within(dashboard).getByText("channels live")).toBeInTheDocument();
+    expect(within(dashboard).getByText("monthly work budget")).toBeInTheDocument();
+    expect(within(dashboard).getByText("team members")).toBeInTheDocument();
+    expect(within(dashboard).getByText("connected channels")).toBeInTheDocument();
     expect(within(dashboard).getByText("approvals")).toBeInTheDocument();
     expect(within(dashboard).getByText("customer goal")).toBeInTheDocument();
     expect(within(dashboard).getByText("briefed")).toBeInTheDocument();
@@ -299,14 +300,14 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText(EVERYDAY.dashboard.capacity)).toBeInTheDocument();
     expect(within(dashboard).getByText("External customer proof remains zero")).toBeInTheDocument();
     expect(within(dashboard).getByText("no external leads qualified or contacted")).toBeInTheDocument();
-    expect(within(dashboard).getByText("changed homepage direction, but did not create customer pipeline")).toBeInTheDocument();
+    expect(within(dashboard).getByText("changed homepage direction, but did not create customer flow")).toBeInTheDocument();
     expect(within(dashboard).getByText("blocked until one provider has a sent-message receipt")).toBeInTheDocument();
     expect(within(dashboard).getByText("do not upsell until the first lane creates value")).toBeInTheDocument();
     expect(within(dashboard).getAllByText("zero signup/payment/customer approval receipts").length).toBeGreaterThan(0);
     expect(within(dashboard).getByText("Google sign-in and signed-in team runtime remain the gate")).toBeInTheDocument();
   });
 
-  it("keeps the empty CMO dashboard honest with blocked ranked work instead of fake traction", () => {
+  it("keeps the empty marketing dashboard honest with blocked ranked work instead of fake traction", () => {
     render(<EverydayShell data={emptyData()} dashboardFirst dashboardOnly />);
     const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
 

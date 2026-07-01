@@ -928,7 +928,10 @@ function WorkSummary({
 }
 
 function starterSeatUsage(brief: MarketingBrief): { used: number; limit: number; overLimit: boolean } | null {
-  const item = brief.capacity.find((signal) => signal.label.toLowerCase() === "agent seats used");
+  const item = brief.capacity.find((signal) => {
+    const label = signal.label.toLowerCase();
+    return label === "agent seats used" || label === "team members active";
+  });
   const match = item?.value.match(/^(\d+)\s*\/\s*(\d+)/);
   if (!match) return null;
   const used = Number(match[1]);
@@ -941,8 +944,6 @@ function proofKindLabel(kind: MarketingBrief["metrics"][number]["proofKind"]): s
   switch (kind) {
     case "external":
       return "external proof";
-    case "dogfood":
-      return "dogfood";
     case "sample":
       return "sample";
     case "live":
@@ -969,32 +970,32 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
     mode: "live",
     headline:
       hasBrief || pendingDecisions || hasExternalReceipts
-        ? "Live CMO readout from this workspace: work in motion, decisions waiting, channel truth, and proof gaps."
+        ? "Live marketing readout: what changed, what needs review, what is connected, and what still needs proof."
         : "No measurable marketing work yet. Start the room and this brief should fill with live proof, not sample traction.",
     executiveSummary: [
       {
-        label: "work shipped today",
+        label: "visible work",
         value: String(shippedWork),
         detail: liveReceipts > 0 ? String(liveReceipts) + " external receipt(s)" : String(deliverables) + " draft artifact(s)",
         tone: shippedWork > 0 ? (liveReceipts > 0 ? "good" : "warn") : "bad",
         proof: liveReceipts > 0 ? "transparency receipt log" : deliverables > 0 ? "workspace thread deliverables" : "no work receipts yet",
       },
       {
-        label: "pipeline moved",
+        label: "new customers",
         value: compactCount(data.northStar.customers),
         detail: data.northStar.revenue,
         tone: data.northStar.customers > 0 ? "good" : "bad",
         proof: "workspace north-star row",
       },
       {
-        label: "approvals waiting",
+        label: "needs your review",
         value: String(pendingDecisions),
         detail: pendingDecisions > 0 ? "owner decision needed" : "no owner queue",
         tone: pendingDecisions > 0 ? "warn" : "neutral",
         proof: "workspace approval queue",
       },
       {
-        label: "blocked channels",
+        label: "channels to connect",
         value: String(blockedChannelCount),
         detail: connectedChannels.length > 0 ? String(connectedChannels.length) + " usable" : "no live acquisition channel",
         tone: blockedChannelCount > 0 ? "bad" : "good",
@@ -1028,7 +1029,7 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
         proof: "workspace north-star row",
       },
       {
-        label: "team lanes",
+        label: "team members",
         value: String(data.room.length),
         detail: workingAgents > 0 ? `${workingAgents} actively working` : "standing by",
         tone: workingAgents > 0 ? "good" : "neutral",
@@ -1036,7 +1037,7 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
         proof: "workspace agent lane state",
       },
       {
-        label: "channels live",
+        label: "connected channels",
         value: String(connectedChannels.length),
         detail:
           pendingChannels.length > 0
@@ -1057,7 +1058,7 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
         proof: "workspace approval queue",
       },
       {
-        label: "assets shipped",
+        label: "drafts ready",
         value: String(deliverables),
         detail: "thread deliverables only",
         tone: deliverables > 0 ? "warn" : "neutral",
@@ -1065,7 +1066,7 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
         proof: "workspace thread deliverables",
       },
       {
-        label: "receipts",
+        label: "proof receipts",
         value: String(liveReceipts),
         detail: "external action log",
         tone: hasExternalReceipts ? "good" : "neutral",
@@ -1082,21 +1083,21 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
     }),
     capacity: [
       {
-        label: "active campaign lanes",
+        label: "campaigns running",
         value: hasBrief ? "1 / 1" : "0 / 1",
         detail: hasBrief ? "upgrade when a second lane queues" : "brief one campaign before upgrading",
         tone: hasBrief ? "warn" : "neutral",
         proof: hasBrief ? "workspace thread has active brief" : "no active brief",
       },
       {
-        label: "agent seats used",
+        label: "team members active",
         value: String(data.room.length) + " / 3",
         detail: data.room.length > 3 ? "upgrade to keep the whole room active" : "inside starter team limit",
         tone: data.room.length > 3 ? "warn" : "neutral",
         proof: "workspace agent lane state",
       },
       {
-        label: "monthly work cap",
+        label: "monthly work budget",
         value: data.northStar.revenue + " / $200",
         detail: data.northStar.revenue === "$0" ? "no paid work/spend to cap yet" : "compare revenue/spend before upgrade",
         tone: data.northStar.revenue === "$0" ? "neutral" : "warn",

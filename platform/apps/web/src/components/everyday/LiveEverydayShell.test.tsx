@@ -515,7 +515,7 @@ describe("LiveEverydayShell (#1181)", () => {
     });
 
     expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
-    expect(screen.getByText(/recipient verified; relay cannot send through Messages yet/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/recipient verified; relay cannot send through Messages yet/i).length).toBeGreaterThan(0);
     expect(screen.getByText("Mac relay host active, but Messages send access is blocked: Gagans-MacBook-Pro")).toBeInTheDocument();
     expect(screen.queryByText(/live relay verified for gagan@example.com/i)).not.toBeInTheDocument();
   });
@@ -837,7 +837,7 @@ describe("LiveEverydayShell (#1181)", () => {
       expect(save).toHaveBeenCalledWith({ recipient: "GAGAN@Example.COM", serviceName: undefined }),
     );
     expect(await screen.findByText(EVERYDAY.connectors.imessage.pending)).toBeInTheDocument();
-    expect(screen.getByText(/gagan@example.com/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/gagan@example.com/i).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: EVERYDAY.connectors.imessage.test }));
 
@@ -921,7 +921,7 @@ describe("LiveEverydayShell (#1181)", () => {
     });
 
     expect(await screen.findByText(EVERYDAY.connectors.imessage.blocked)).toBeInTheDocument();
-    expect(screen.getByText(/recipient verified; relay is dry-run/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/recipient verified; relay is dry-run/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Mac relay host active with Messages send and reply access: Gagans-MacBook-Pro/i)).toBeInTheDocument();
     expect(screen.getByText(/last iMessage relay failed: Apple Messages send failed/i)).toBeInTheDocument();
     expect(screen.queryByText(EVERYDAY.connectors.connected)).not.toBeInTheDocument();
