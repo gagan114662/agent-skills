@@ -184,12 +184,13 @@ function expandIpv6(address: string): number[] | null {
   const withoutZone = zoneIndex >= 0 ? address.slice(0, zoneIndex) : address;
   const lower = withoutZone.toLowerCase();
   const ipv4Match = lower.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  const ipv4Literal = ipv4Match?.[1];
   let normalized = lower;
-  const embeddedIpv4 = ipv4Match?.[1] ? parseIpv4(ipv4Match[1]) : null;
-  if (embeddedIpv4) {
+  const embeddedIpv4 = ipv4Literal ? parseIpv4(ipv4Literal) : null;
+  if (embeddedIpv4 && ipv4Literal) {
     const [a, b, c, d] = embeddedIpv4;
     normalized =
-      lower.slice(0, -ipv4Match[1].length) + ((a << 8) | b).toString(16) + ":" + ((c << 8) | d).toString(16);
+      lower.slice(0, -ipv4Literal.length) + ((a << 8) | b).toString(16) + ":" + ((c << 8) | d).toString(16);
   }
 
   const halves = normalized.split("::");
