@@ -118,7 +118,7 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.getByText(EVERYDAY.approvals.empty)).toBeInTheDocument();
     expect(screen.getByText(EVERYDAY.transparency.empty)).toBeInTheDocument();
     expect(screen.getAllByText("$0").length).toBeGreaterThan(0);
-    expect(await screen.findByText("signed-in Codex subscription auth is connected")).toBeInTheDocument();
+    expect(await screen.findByText("signed-in team engine is connected")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText(/Northwind/i)).not.toBeInTheDocument());
   });
 

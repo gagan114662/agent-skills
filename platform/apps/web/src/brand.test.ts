@@ -305,7 +305,8 @@ describe("company/procurement page copy (#1188)", () => {
     const details = COMPANY.details.map((detail) => `${detail.label}: ${detail.value}`).join("\n");
 
     expect(details).not.toMatch(/ipop\.ai operator/i);
-    expect(details).toMatch(/not yet published/i);
+    expect(details).not.toMatch(/not yet published/i);
+    expect(details).toMatch(/Gagan Arora, owner\/operator of ipop\.ai/i);
     expect(details).toMatch(/support@ipop\.ai/i);
     expect(details).toMatch(/W-9|tax|vendor/i);
   });

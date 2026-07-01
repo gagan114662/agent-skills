@@ -239,6 +239,11 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText("usable asset ready for a connected channel")).toBeInTheDocument();
     expect(within(dashboard).getByText("active campaign lanes")).toBeInTheDocument();
     expect(within(dashboard).getByText("agent seats used")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Upgrade to keep the whole agent room active")).toBeInTheDocument();
+    expect(within(dashboard).getByRole("link", { name: "View Pro" })).toHaveAttribute(
+      "href",
+      "/pricing?plan=pro",
+    );
     expect(within(dashboard).getByText("monthly work cap")).toBeInTheDocument();
     expect(within(dashboard).getByText("team lanes")).toBeInTheDocument();
     expect(within(dashboard).getByText("channels live")).toBeInTheDocument();

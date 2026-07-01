@@ -714,6 +714,7 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
   const d = EVERYDAY.dashboard;
   const brief = data.marketingBrief ?? fallbackMarketingBrief(data);
   const latest = data.transparency.slice(-3).reverse();
+  const seatUsage = starterSeatUsage(brief);
   return (
     <section id="dashboard" className="everyday-dashboard" aria-label={d.heading}>
       <div className="everyday-dashboard__head">
@@ -793,6 +794,19 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
             </li>
           ))}
         </ol>
+        {seatUsage?.overLimit && (
+          <div className="everyday-dashboard__upgrade" aria-label="Starter agent-seat limit exceeded">
+            <div>
+              <strong>Upgrade to keep the whole agent room active</strong>
+              <span>
+                Starter includes {seatUsage.limit} agent seats; this workspace is using {seatUsage.used}.
+              </span>
+            </div>
+            <a className="everyday-btn everyday-btn--pop" href="/pricing?plan=pro">
+              View Pro
+            </a>
+          </div>
+        )}
       </div>
       <div className="everyday-dashboard__readiness">
         <p className="everyday-eyebrow">launch readiness</p>
@@ -873,6 +887,16 @@ function WorkSummary({ data }: { data: EverydayData }): React.JSX.Element {
       </div>
     </section>
   );
+}
+
+function starterSeatUsage(brief: MarketingBrief): { used: number; limit: number; overLimit: boolean } | null {
+  const item = brief.capacity.find((signal) => signal.label.toLowerCase() === "agent seats used");
+  const match = item?.value.match(/^(\d+)\s*\/\s*(\d+)/);
+  if (!match) return null;
+  const used = Number(match[1]);
+  const limit = Number(match[2]);
+  if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
+  return { used, limit, overLimit: used > limit };
 }
 
 function proofKindLabel(kind: MarketingBrief["metrics"][number]["proofKind"]): string {
@@ -1029,7 +1053,7 @@ function fallbackMarketingBrief(data: EverydayData): MarketingBrief {
       {
         label: "agent seats used",
         value: String(data.room.length) + " / 3",
-        detail: data.room.length > 3 ? "team shape exceeds starter seat limit" : "inside starter team limit",
+        detail: data.room.length > 3 ? "upgrade to keep the whole room active" : "inside starter team limit",
         tone: data.room.length > 3 ? "warn" : "neutral",
         proof: "workspace agent lane state",
       },

@@ -2365,14 +2365,14 @@ export const COMPANY = {
       label: "Legal entity status",
       value: companyValue(
         "VITE_COMPANY_LEGAL_ENTITY",
-        "Owner-operated ipop.ai project; the public contracting entity name is not yet published. Buyers receive the current legal name before signature.",
+        "Gagan Arora, owner/operator of ipop.ai. Procurement receives the current legal and tax details before signature.",
       ),
     },
     {
       label: "Jurisdiction",
       value: companyValue(
         "VITE_COMPANY_JURISDICTION",
-        "United States operating status; state and registered-office details are not yet published.",
+        "United States operating status; registered-office details are shared in the procurement packet before signature.",
       ),
     },
     {

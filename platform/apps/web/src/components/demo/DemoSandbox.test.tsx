@@ -108,6 +108,29 @@ describe("DemoSandbox (#610)", () => {
     expect(events).toEqual(["demo-start", "demo-complete", "demo-to-signup"]);
   });
 
+  it("submits the actual typed website instead of falling back to the canned example", async () => {
+    const calls: string[] = [];
+    const tomoPlan: DemoDeliverableDto = {
+      ...plan,
+      business: { url: "https://tomo.ai", host: "tomo.ai", name: "Tomo" },
+      title: "Tomo's first-week growth teardown",
+      subtitle: "A real deliverable for tomo.ai — built before you set anything up.",
+    };
+    const impl: FetchLike = (input) => {
+      calls.push(input);
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(tomoPlan) });
+    };
+    render(<DemoSandbox fetchImpl={impl} revealDelayMs={0} />);
+
+    const form = screen.getByRole("button", { name: /build my free deliverable/i }).closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.change(screen.getByLabelText(/your website/i), { target: { value: "tomo.ai" } });
+    fireEvent.submit(form!);
+
+    await waitFor(() => expect(screen.getByText("Tomo's first-week growth teardown")).toBeInTheDocument());
+    expect(calls).toEqual(["/onboarding/deliverable?url=tomo.ai"]);
+  });
+
   it("refuses to fetch an empty URL and shows an inline error", () => {
     const { impl, calls } = okFetch();
     render(<DemoSandbox fetchImpl={impl} revealDelayMs={0} />);

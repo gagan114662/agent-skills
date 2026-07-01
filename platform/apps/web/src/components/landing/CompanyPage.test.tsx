@@ -7,7 +7,7 @@ describe("CompanyPage", () => {
     render(<CompanyPage />);
 
     expect(screen.getByRole("heading", { name: /company information/i })).toBeInTheDocument();
-    expect(screen.getByText(/public contracting entity name is not yet published/i)).toBeInTheDocument();
+    expect(screen.getByText(/Gagan Arora, owner\/operator of ipop\.ai/i)).toBeInTheDocument();
     expect(screen.getByText(/buyer packet/i)).toBeInTheDocument();
     expect(screen.getByText(/security questionnaire/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "DPA" })).toHaveAttribute("href", "/dpa");

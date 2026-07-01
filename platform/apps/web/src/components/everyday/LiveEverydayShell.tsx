@@ -248,7 +248,7 @@ function withFirstRunReceipt(
         {
           label: "agent seats used",
           value: String(data.room.length) + " / 3",
-          detail: data.room.length > 3 ? "team shape exceeds starter seat limit" : "inside starter team limit",
+          detail: data.room.length > 3 ? "upgrade to keep the whole room active" : "inside starter team limit",
           tone: data.room.length > 3 ? "warn" : "neutral",
           proof: "workspace agent lane state",
         },
@@ -330,7 +330,7 @@ function withCodexReadiness(
     label: "auth",
     status: codexStatus.connected ? "ready" : "blocked",
     proof: codexStatus.connected
-      ? "signed-in Codex subscription auth is connected"
+      ? "signed-in team engine is connected"
       : codexStatus.reason,
   };
   return {
