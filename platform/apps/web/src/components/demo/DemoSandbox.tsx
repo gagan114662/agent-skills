@@ -181,9 +181,10 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
     });
   };
 
-  const onSubmit = (e: React.FormEvent): void => {
+  const onSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
-    void build(input);
+    const formUrl = new FormData(e.currentTarget).get("url");
+    void build(typeof formUrl === "string" ? formUrl : input);
   };
 
   const onRestart = (): void => {

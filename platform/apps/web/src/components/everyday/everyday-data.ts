@@ -757,7 +757,7 @@ export function ipopDogfoodEveryday(memberName: string = "gagan"): EverydayData 
       ],
       capacity: [
         { label: "active campaign lanes", value: "0 / 1", detail: "first live acquisition lane not proven", tone: "bad", proof: "no contacted-lead receipt" },
-        { label: "agent seats used", value: "4 / 3", detail: "sample shows team shape; plan must enforce seats live", tone: "warn", proof: "sample room has Scout/Quill/Echo/Bid" },
+        { label: "agent seats used", value: "4 / 3", detail: "upgrade to keep the whole room active", tone: "warn", proof: "sample room has Scout/Quill/Echo/Bid" },
         { label: "monthly work cap", value: "$0 / $200", detail: "do not upsell until the first lane creates value", tone: "neutral", proof: "no spend/revenue receipt" },
       ],
       funnel: [
