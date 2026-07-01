@@ -34,6 +34,9 @@ primary_region = "yyz"
   # Claude when the owner's Codex subscription is the intended capacity lane (#1270).
   # #108 CORS allowlist: lets the Vercel console make credentialed calls cross-origin.
   RELOAD_WEB_ORIGIN = "https://ipop.ai,https://www.ipop.ai"
+  # Production must publish through the real deploy provider. Provider credentials
+  # (VERCEL_TOKEN / VERCEL_TEAM_ID / VERCEL_PROJECT_ID) stay in Fly secrets.
+  DEPLOY_PROVIDER = "vercel"
   # #138 marketing department fleet: turn the agency ON for the live product (the config env base layer,
   # #58). Every workspace is seeded on signup AND backfilled idempotently on boot, so the owner lands in
   # a working agency (SEO/Social/Content/Email/Paid/Analytics/Brand) instead of an empty channel list.
