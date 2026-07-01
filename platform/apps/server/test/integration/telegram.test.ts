@@ -199,6 +199,14 @@ async function waitForSendContaining(text: string): Promise<void> {
   }
 }
 
+async function expectNoSendContaining(text: string): Promise<void> {
+  const deadline = Date.now() + 250;
+  while (Date.now() <= deadline) {
+    expect(sendMessage.mock.calls.some((call) => String(call[0].text).includes(text))).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 async function waitForProviderReceipt(providerConversationId: string, providerMessageId: string): Promise<void> {
   const deadline = Date.now() + 2_000;
   while (
@@ -696,7 +704,7 @@ describe("Telegram room bridge (#1267)", () => {
       text: expect.stringContaining("Scout, Quill, Echo, and Bid are in the room"),
     });
     await waitForLaunches(4);
-    await waitForSendContaining("started:");
+    await expectNoSendContaining("started:");
     expect(new Set(teamLaunches.map((launch) => launch.teamRunId))).toEqual(new Set([first.json().teamRunId]));
     expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex"]);
     expect((await listChannelMessages(first.json().channelId)).map((m) => m.body)).toContain("market ipop.ai");

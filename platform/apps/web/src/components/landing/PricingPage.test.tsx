@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { PricingPage } from "./PricingPage.js";
 import { FAQ, LANDING, LAUNCH_READINESS, PRICING, REFUND_POLICY } from "../../brand.js";
 import { APP_ROUTES } from "../../routing.js";
+import { TELEGRAM_BOT_URL } from "../onboarding/messaging-entry.js";
 
 describe("PricingPage (#214)", () => {
   it("leads with the focused pricing hero", () => {
@@ -67,7 +68,7 @@ describe("PricingPage (#214)", () => {
     );
     expect(within(nav).getByRole("link", { name: "Start" })).toHaveAttribute(
       "href",
-      "/start#onboard-target",
+      TELEGRAM_BOT_URL,
     );
   });
 

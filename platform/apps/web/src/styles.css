@@ -10630,6 +10630,19 @@ select:focus-visible {
   text-decoration: none;
   transform-origin: 50% 18%;
   animation: onboard-icon-bob 5.2s ease-in-out infinite;
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.28s var(--o-ease);
+}
+.onboard-door-action:hover,
+.onboard-door-action:focus-visible {
+  filter: saturate(1.18);
+  transform: translateY(-8px) rotate(-2deg) scale(1.05);
+}
+.onboard-door-action:focus-visible {
+  outline: 3px solid rgba(255, 248, 121, 0.86);
+  outline-offset: 6px;
+  border-radius: 16px;
 }
 .onboard-door-action__label {
   text-shadow: 0 1px 12px rgba(255, 255, 255, 0.42);
@@ -10668,7 +10681,7 @@ select:focus-visible {
     box-shadow 0.2s var(--o-ease);
 }
 .onboard-door-action:hover .onboard-door-action__mark {
-  transform: translateY(-4px) rotate(-2deg);
+  transform: translateY(-4px) rotate(-2deg) scale(1.08);
   box-shadow:
     0 18px 34px rgba(32, 49, 61, 0.22),
     inset 0 0 0 1px rgba(0, 0, 0, 0.08);
@@ -10783,7 +10796,7 @@ select:focus-visible {
 }
 .onboard-message-channel:hover,
 .onboard-message-channel:focus-visible {
-  transform: translateY(-2px);
+  transform: translateY(-3px) rotate(-1deg);
   background: rgba(255, 255, 255, 0.82);
 }
 .onboard-message-channel[data-selected="true"] {
@@ -10791,6 +10804,7 @@ select:focus-visible {
   box-shadow:
     inset 0 0 0 2px #54ce35,
     0 12px 28px rgba(71, 207, 25, 0.18);
+  transform: translateY(-2px);
 }
 .onboard-message-channel__mark {
   position: relative;
@@ -10800,6 +10814,14 @@ select:focus-visible {
   background:
     radial-gradient(circle at 34% 23%, rgba(255, 255, 255, 0.82) 0 10%, transparent 11%),
     #fff879;
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.22s var(--o-ease);
+}
+.onboard-message-channel:hover .onboard-message-channel__mark,
+.onboard-message-channel:focus-visible .onboard-message-channel__mark {
+  transform: rotate(-8deg) scale(1.1);
+  box-shadow: 0 10px 20px rgba(29, 35, 45, 0.16);
 }
 .onboard-message-channel__mark::before,
 .onboard-message-channel__mark::after {
@@ -11256,7 +11278,7 @@ select:focus-visible {
 .onboard-door__field {
   position: relative;
   display: flex;
-  width: min(620px, 100%);
+  width: min(720px, 100%);
   box-sizing: border-box;
   min-height: 66px;
   overflow: hidden;
@@ -11307,8 +11329,8 @@ select:focus-visible {
 }
 .onboard[data-phase="door"] .onboard-cta {
   align-self: stretch;
-  flex: 0 0 128px;
-  min-width: 128px;
+  flex: 0 0 194px;
+  min-width: 194px;
   height: 100%;
   padding: 0 18px;
   border: 0;
@@ -11316,7 +11338,7 @@ select:focus-visible {
   border-radius: 0;
   background: transparent;
   color: #050505;
-  font-size: clamp(20px, 1.8vw, 28px);
+  font-size: clamp(18px, 1.55vw, 24px);
   font-weight: 850;
   white-space: nowrap;
 }
@@ -11357,6 +11379,14 @@ select:focus-visible {
   transform-origin: 50% 100%;
   animation: onboard-object-float 7s ease-in-out infinite;
   cursor: default;
+  transition:
+    filter 0.22s var(--o-ease),
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.onboard-marketing__item:hover {
+  filter: saturate(1.16) drop-shadow(0 18px 18px rgba(38, 51, 63, 0.16));
+  transform: translateY(-14px) rotate(-2deg) scale(1.08);
+  z-index: 2;
 }
 .onboard-marketing__item:nth-child(2n) {
   animation-delay: -1.4s;
@@ -11385,8 +11415,26 @@ select:focus-visible {
     0 2px 0 rgba(255, 255, 255, 0.5) inset,
     inset 0 0 0 1px rgba(0, 0, 0, 0.08);
   transition:
-    transform 0.2s var(--o-ease),
-    box-shadow 0.2s var(--o-ease);
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.24s var(--o-ease);
+}
+.onboard-marketing__item:hover .onboard-marketing__mark {
+  box-shadow:
+    0 28px 44px rgba(35, 47, 57, 0.2),
+    0 2px 0 rgba(255, 255, 255, 0.62) inset,
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.onboard-marketing__item[data-kind="brief"]:hover .onboard-marketing__mark::before {
+  transform: rotate(8deg) scaleX(1.08);
+}
+.onboard-marketing__item[data-kind="brief"]:hover .onboard-marketing__mark::after {
+  transform: rotate(98deg) scaleX(1.08);
+}
+.onboard-marketing__item[data-kind="paid"]:hover .onboard-marketing__mark {
+  transform: rotate(16deg) scale(1.08);
+}
+.onboard-marketing__item[data-kind="receipt"]:hover .onboard-marketing__mark {
+  transform: rotate(3deg) translateY(-3px);
 }
 .onboard-marketing__mark {
   transform-style: preserve-3d;
@@ -11792,6 +11840,26 @@ select:focus-visible {
   .onboard[data-phase="door"]::before,
   .onboard[data-phase="door"]::after {
     animation: none;
+  }
+  .onboard-door-action,
+  .onboard-door-action:hover,
+  .onboard-door-action:focus-visible,
+  .onboard-message-channel,
+  .onboard-message-channel:hover,
+  .onboard-message-channel:focus-visible,
+  .onboard-message-channel[data-selected="true"],
+  .onboard-marketing__item,
+  .onboard-marketing__item:hover,
+  .onboard-door-action:hover .onboard-door-action__mark,
+  .onboard-message-channel:hover .onboard-message-channel__mark,
+  .onboard-message-channel:focus-visible .onboard-message-channel__mark,
+  .onboard-marketing__item:hover .onboard-marketing__mark,
+  .onboard-marketing__item[data-kind="brief"]:hover .onboard-marketing__mark::before,
+  .onboard-marketing__item[data-kind="brief"]:hover .onboard-marketing__mark::after,
+  .onboard-marketing__item[data-kind="paid"]:hover .onboard-marketing__mark,
+  .onboard-marketing__item[data-kind="receipt"]:hover .onboard-marketing__mark {
+    transform: none;
+    transition: none;
   }
 }
 
@@ -12360,11 +12428,13 @@ select:focus-visible {
     display: none;
   }
   .onboard[data-phase="door"] .onboard-cta {
-    flex: 0 0 72px;
-    min-width: 72px;
+    flex: 0 0 132px;
+    min-width: 132px;
     min-height: 0;
+    padding: 0 10px;
     border-top: 0;
     border-left: 1px solid rgba(0, 0, 0, 0.12);
+    font-size: clamp(15px, 3.9vw, 16px);
   }
   .onboard-cta {
     width: 100%;

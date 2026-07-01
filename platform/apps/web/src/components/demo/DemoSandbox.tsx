@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BRAND } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { PublicDoorFooter, PublicDoorNav } from "../onboarding/PublicDoorNav.js";
+import { TELEGRAM_BOT_URL } from "../onboarding/messaging-entry.js";
 import {
   DemoError,
   fetchDemoDeliverable,
@@ -200,7 +201,7 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
 
   return (
     <div className="demo">
-      <PublicDoorNav className="demo__nav" startHref="/start#onboard-target" />
+      <PublicDoorNav className="demo__nav" startHref={TELEGRAM_BOT_URL} />
       <header className="demo__head">
         <p className="demo__eyebrow">{COPY.eyebrow}</p>
         <h1 className="demo__headline">{plan ? plan.title : COPY.headline}</h1>

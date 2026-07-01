@@ -2,6 +2,7 @@ import { BRAND, COMPANY, LEGAL } from "../../brand.js";
 import { APP_ROUTES } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
 import { Wordmark } from "../Wordmark.js";
+import { TELEGRAM_BOT_URL } from "./messaging-entry.js";
 
 const DOOR_ACTIONS = [
   { key: "login", label: "Login", href: "/login?return=" + encodeURIComponent(APP_ROUTES.everyday) },
@@ -11,7 +12,7 @@ const DOOR_ACTIONS = [
 
 export function PublicDoorNav({
   className = "",
-  startHref = "#onboard-target",
+  startHref = TELEGRAM_BOT_URL,
 }: {
   className?: string;
   startHref?: string;

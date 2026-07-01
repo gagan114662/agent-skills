@@ -17,6 +17,7 @@ import { PopMark } from "../PopMark.js";
 import { useState } from "react";
 import { LaunchReadiness } from "./LaunchReadiness.js";
 import { PublicDoorFooter, PublicDoorNav } from "../onboarding/PublicDoorNav.js";
+import { TELEGRAM_BOT_URL } from "../onboarding/messaging-entry.js";
 
 type BillingInterval = "month" | "year";
 
@@ -34,7 +35,7 @@ export function PricingPage(): React.JSX.Element {
   const isAnnual = billingInterval === "year";
   return (
     <div className="pricing-page">
-      <PublicDoorNav className="pricing-page__nav" startHref="/start#onboard-target" />
+      <PublicDoorNav className="pricing-page__nav" startHref={TELEGRAM_BOT_URL} />
 
       <main>
         <section className="pricing-page__hero" aria-labelledby="pricing-title">

@@ -491,7 +491,7 @@ export function seedEveryday(memberName: string = "gagan"): EverydayData {
         kind: "agent-line",
         agent: "Operator",
         at: "11:30 am",
-        text: "I can turn the approved iMessage-first experience into product work. No separate API-key billing path needed for this lane.",
+        text: "I can turn the approved Telegram-first experience into product work. No separate API-key billing path needed for this lane.",
       },
       {
         id: "t4",

@@ -76,7 +76,27 @@ describe("external room mirror (#1424)", () => {
       }),
     ).toBe(true);
     expect(
+      shouldMirrorExternalRoomEvent({
+        body: encodeTeamEvent({
+          teamRunId: "tr1",
+          subtaskId: "s3",
+          agentMemberId: "a3",
+          kind: "started",
+          summary: "started: Scout site and market audit",
+          branch: "messaging-scout",
+          createdAt: new Date(0).toISOString(),
+        }),
+        source: "agent_post",
+      }),
+    ).toBe(false);
+    expect(
       shouldMirrorExternalRoomEvent({ body: "Drafting a tighter launch angle", source: "agent_post" }),
+    ).toBe(false);
+    expect(
+      shouldMirrorExternalRoomEvent({
+        body: "deliverable preview: here are three sharper launch angles",
+        source: "agent_post",
+      }),
     ).toBe(true);
   });
 
@@ -173,6 +193,107 @@ describe("external room mirror (#1424)", () => {
     expect(telegramSend).not.toHaveBeenCalled();
     expect(whatsappSend).not.toHaveBeenCalled();
     expect(recordReceipt).not.toHaveBeenCalled();
+  });
+
+  it("keeps Telegram rooms free of low-value agent preamble from live runs", async () => {
+    const telegramSend = vi.fn(async () => ({
+      status: "sent" as const,
+      chatId: "123456",
+      providerMessageId: "tg-1",
+    }));
+    const mirror = createExternalRoomMirror({
+      telegram: { send: telegramSend },
+      whatsapp: { send: vi.fn() },
+      resolveSecrets: vi.fn(async (_workspaceId, serviceKey) =>
+        serviceKey === "telegram_room" ? { TELEGRAM_CHAT_ID: "123456" } : {},
+      ),
+      getReceiptForMessage: vi.fn(async () => undefined),
+      recordReceipt: vi.fn(async () => undefined),
+      getMember: vi.fn(async () => ({ id: "agent-1", kind: "agent", displayName: "Scout" })),
+    });
+
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({
+        id: "planning",
+        body:
+          "I'll handle Scout's lane: verify the current ipop.ai surface, identify the positioning gap, and leave a concise receipt the rest of the room can use.",
+      }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({
+        id: "empty-workspace",
+        body:
+          "I found an empty workspace, so I'll leave the receipt as a new local note. The current homepage copy is very broad.",
+      }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({
+        id: "preview",
+        body: "preview: Top positioning gap: ipop must lead with a marketing team in your messages, not another dashboard.",
+      }),
+      source: "agent_post",
+    });
+
+    expect(telegramSend).toHaveBeenCalledTimes(1);
+    expect(telegramSend.mock.calls[0]?.[0].text).toContain("Scout: preview: Top positioning gap");
+    expect(telegramSend.mock.calls[0]?.[0].text).not.toMatch(/empty workspace|local note|handle Scout's lane/);
+  });
+
+  it("does not mirror performative agent banter from the public homepage QA path", async () => {
+    const telegramSend = vi.fn(async () => ({
+      status: "sent" as const,
+      chatId: "123456",
+      providerMessageId: "tg-1",
+    }));
+    const mirror = createExternalRoomMirror({
+      telegram: { send: telegramSend },
+      whatsapp: { send: vi.fn() },
+      resolveSecrets: vi.fn(async (_workspaceId, serviceKey) =>
+        serviceKey === "telegram_room" ? { TELEGRAM_CHAT_ID: "123456" } : {},
+      ),
+      getReceiptForMessage: vi.fn(async () => undefined),
+      recordReceipt: vi.fn(async () => undefined),
+      getMember: vi.fn(async () => ({ id: "agent-1", kind: "agent", displayName: "Quill" })),
+    });
+
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({ id: "scout-1", body: "right, i read the whole thing. found something." }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({ id: "quill-1", body: "i'll write the words. the good ones." }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({ id: "echo-1", body: "and i'll make it loud. tastefully loud." }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({
+        id: "preview",
+        body: "deliverable preview: Lead with a Telegram room where your marketing team ships ads, posts, and tests.",
+      }),
+      source: "agent_post",
+    });
+
+    expect(telegramSend).toHaveBeenCalledTimes(1);
+    expect(telegramSend.mock.calls[0]?.[0].text).toContain("deliverable preview: Lead with a Telegram room");
   });
 
   it("keeps Telegram rooms free of runtime receipts and local artifact paths", async () => {
@@ -425,7 +546,7 @@ describe("external room mirror (#1424)", () => {
       mirror.mirror({
         workspaceId: "w1",
         channelId: "c1",
-        message: message({ body: "working on the launch after Telegram failure" }),
+        message: message({ body: "deliverable preview: launch copy is ready after Telegram failure" }),
         source: "agent_post",
       }),
     ).resolves.toBeUndefined();

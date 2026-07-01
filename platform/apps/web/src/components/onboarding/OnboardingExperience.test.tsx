@@ -5,6 +5,7 @@ import { SUPPORT_CONTACT } from "../../brand.js";
 import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES } from "../../routing.js";
 import { FIRST_RUN_RECEIPT_KEY } from "./first-run-receipt.js";
+import { TELEGRAM_BOT_URL } from "./messaging-entry.js";
 import type {
   ConnectResult,
   ConnectTool,
@@ -155,17 +156,17 @@ describe("OnboardingExperience (#784)", () => {
       screen.getByRole("list", { name: /decorative marketing capability preview/i }),
     ).toBeInTheDocument();
     expect(screen.getByText(/customer/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /log in/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /log in/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /login/i })).toHaveAttribute(
       "href",
       "/login?return=%2Feveryday",
     );
     expect(screen.getByRole("link", { name: /love/i })).toHaveAttribute("href", "/demo");
     expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /start/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /imessage/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("link", { name: /start/i })).toHaveAttribute("href", TELEGRAM_BOT_URL);
+    expect(screen.getByRole("button", { name: /telegram/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /imessage/i })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("button", { name: /whatsapp/i })).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByRole("button", { name: /telegram/i })).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(screen.getByRole("button", { name: /whatsapp/i }));
     expect(screen.getByRole("button", { name: /whatsapp/i })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText(/what are we marketing today/i)).toHaveFocus();
@@ -183,6 +184,33 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.queryByText(/send\/spend policy locked/i)).not.toBeInTheDocument();
     // No agent thread / connect prompts on the door.
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
+  });
+
+  it("opens the public workspace door straight into Telegram", () => {
+    const originalLocation = window.location;
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign },
+    });
+
+    try {
+      render(<OnboardingExperience hour={14} />);
+
+      expect(screen.getByRole("button", { name: /open telegram/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /start/i })).toHaveAttribute("href", TELEGRAM_BOT_URL);
+
+      fireEvent.click(screen.getByRole("button", { name: /open telegram/i }));
+
+      expect(assign).toHaveBeenCalledWith(TELEGRAM_BOT_URL);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.queryByRole("complementary", { name: /ipop cowork room/i })).not.toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
   });
 
   it("keeps finished-work proof behind the dashboard so the homepage stays clean (#571)", () => {
@@ -228,7 +256,7 @@ describe("OnboardingExperience (#784)", () => {
     expect(
       await screen.findByRole("article", { name: /instant personalized deliverable/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /log in/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /login/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /love/i })).toHaveAttribute("href", "/demo");
     expect(screen.getByRole("link", { name: /dashboard/i })).toHaveAttribute(
       "href",
@@ -307,42 +335,32 @@ describe("OnboardingExperience (#784)", () => {
     expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
   });
 
-  it("hands the live first-result flow to the iMessage workspace instead of Gmail connectors", async () => {
-    const onOpenWorkspace = vi.fn();
-    render(
-      <OnboardingExperience
-        provider={fakeProvider()}
-        connectMode="workspace"
-        onOpenWorkspace={onOpenWorkspace}
-        hour={14}
-      />,
-    );
-
-    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
-      target: { value: "acme.com" },
+  it("keeps workspace mode out of the old web-first connector flow", () => {
+    const originalLocation = window.location;
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign },
     });
-    fireEvent.click(screen.getByRole("button", { name: /start/i }));
-    fireEvent.click(await screen.findByRole("link", { name: /text the team in imessage/i }));
 
-    expect(onOpenWorkspace).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^allow$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /skip for now/i })).not.toBeInTheDocument();
-  });
+    try {
+      render(<OnboardingExperience provider={fakeProvider()} connectMode="workspace" hour={14} />);
 
-  it("uses a native iMessage URL for the live first-result handoff", async () => {
-    render(<OnboardingExperience provider={fakeProvider()} connectMode="workspace" hour={14} />);
+      fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+        target: { value: "acme.com" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /open telegram/i }));
 
-    fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
-      target: { value: "acme.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /start/i }));
-
-    expect(await screen.findByRole("link", { name: /text the team in imessage/i })).toHaveAttribute(
-      "href",
-      "imessage://",
-    );
-    expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
+      expect(assign).toHaveBeenCalledWith(TELEGRAM_BOT_URL);
+      expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^allow$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /skip for now/i })).not.toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
   });
 
   it("lets a new user approve the first result without opening settings or connectors (#525)", async () => {

@@ -30,6 +30,7 @@ import { Security } from "./components/landing/Security.js";
 import { DemoSandbox } from "./components/demo/DemoSandbox.js";
 import { OnboardingExperience } from "./components/onboarding/OnboardingExperience.js";
 import { PublicDoorFooter, PublicDoorNav } from "./components/onboarding/PublicDoorNav.js";
+import { TELEGRAM_BOT_URL } from "./components/onboarding/messaging-entry.js";
 import { EverydayShell } from "./components/everyday/EverydayShell.js";
 import { ipopDogfoodEveryday } from "./components/everyday/everyday-data.js";
 import { experienceTokenStyle } from "./design/ipop-experience-tokens.js";
@@ -155,7 +156,7 @@ function marketingPages(): PrerenderPage[] {
 function StaticPublicDashboard(): React.JSX.Element {
   return (
     <div className="public-dashboard" style={experienceTokenStyle("onboarding")}>
-      <PublicDoorNav className="public-dashboard__nav" startHref="/start#onboard-target" />
+      <PublicDoorNav className="public-dashboard__nav" startHref={TELEGRAM_BOT_URL} />
       <h1 className="sr-only">CMO brief</h1>
       <EverydayShell data={ipopDogfoodEveryday()} dashboardFirst dashboardOnly />
       <PublicDoorFooter className="public-dashboard__footer" />
