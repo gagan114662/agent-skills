@@ -17,7 +17,7 @@ import {
   clearPendingFirstRunReceipt,
   readPendingFirstRunReceipt,
 } from "../onboarding/first-run-receipt.js";
-import { EverydayShell, type EverydayRoomLaunchResult } from "./EverydayShell.js";
+import { EverydayShell, type EverydayRoomLaunchResult, type EverydayShellTheme } from "./EverydayShell.js";
 import {
   emptyEverydayData,
   type AgentLane,
@@ -760,7 +760,8 @@ async function activateFirstRunTeam(
 export function LiveEverydayShell({
   dashboardFirst = false,
   dashboardOnly = false,
-}: { dashboardFirst?: boolean; dashboardOnly?: boolean } = {}): React.JSX.Element {
+  theme = "workspace",
+}: { dashboardFirst?: boolean; dashboardOnly?: boolean; theme?: EverydayShellTheme } = {}): React.JSX.Element {
   const state = useAppState();
   const store = useStore();
   const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
@@ -864,6 +865,7 @@ export function LiveEverydayShell({
       operatorPacketForGoal={codexOperatorPacket}
       dashboardFirst={dashboardFirst}
       dashboardOnly={dashboardOnly}
+      theme={theme}
     />
   );
 }

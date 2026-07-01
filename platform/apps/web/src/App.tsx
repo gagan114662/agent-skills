@@ -64,9 +64,9 @@ function DashboardRoute(): React.JSX.Element {
   }, [store]);
 
   let dashboard: React.JSX.Element;
-  if (phase === "ready") dashboard = <LiveEverydayShell dashboardFirst dashboardOnly />;
+  if (phase === "ready") dashboard = <LiveEverydayShell dashboardFirst dashboardOnly theme="public" />;
   else if (phase === "loading") dashboard = <Splash />;
-  else dashboard = <EverydayShell data={emptyEverydayData()} dashboardFirst dashboardOnly />;
+  else dashboard = <EverydayShell data={emptyEverydayData()} dashboardFirst dashboardOnly theme="public" />;
 
   return (
     <div className="public-dashboard" style={experienceTokenStyle("onboarding")}>

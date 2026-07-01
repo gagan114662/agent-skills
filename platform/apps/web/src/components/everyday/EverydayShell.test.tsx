@@ -14,7 +14,7 @@ import { type ApprovalCard, type EverydayData } from "./everyday-data.js";
 import { ipopDogfoodEveryday, seedEveryday } from "./__fixtures__/everyday-fixtures.js";
 import { EVERYDAY } from "../../brand.js";
 import { APP_ROUTES } from "../../routing.js";
-import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
+import { ipopExperienceLightTokens, ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
 
 function emptyData(over: Partial<EverydayData> = {}): EverydayData {
   return {
@@ -59,6 +59,19 @@ describe("EverydayShell — north star (#630)", () => {
       "--ed-pop": ipopExperienceTokens.color.accent,
       "--ed-serif": ipopExperienceTokens.typography.serif,
       "--ed-sans": ipopExperienceTokens.typography.sans,
+    });
+  });
+
+  it("uses the light homepage token set for public dashboard embeds (#1532)", () => {
+    const { container } = render(<EverydayShell data={emptyData()} dashboardFirst dashboardOnly theme="public" />);
+    const root = container.querySelector<HTMLElement>(".everyday-shell");
+
+    expect(root).not.toBeNull();
+    expect(root).toHaveClass("everyday-shell--public");
+    expect(root).toHaveStyle({
+      "--ed-canvas": ipopExperienceLightTokens.color.canvas,
+      "--ed-surface": ipopExperienceLightTokens.color.surface,
+      "--ed-text": ipopExperienceLightTokens.color.text,
     });
   });
 

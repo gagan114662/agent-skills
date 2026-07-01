@@ -50,6 +50,8 @@ export interface EverydayApprovalActions {
   requestRevision(card: ApprovalCard, note: string): Promise<void>;
 }
 
+export type EverydayShellTheme = "workspace" | "public";
+
 export const defaultEverydayApprovalActions: EverydayApprovalActions = {
   async ship(card) {
     await api.approvals.approve(card.approvalRequestId, "Ship from everyday shell");
@@ -1557,6 +1559,7 @@ export function EverydayShell({
   operatorPacketForGoal,
   dashboardFirst = false,
   dashboardOnly = false,
+  theme = "workspace",
 }: {
   data?: EverydayData;
   hour?: number;
@@ -1572,6 +1575,7 @@ export function EverydayShell({
   operatorPacketForGoal?: (goal: string) => string;
   dashboardFirst?: boolean;
   dashboardOnly?: boolean;
+  theme?: EverydayShellTheme;
 }): React.JSX.Element {
   const [shipped, setShipped] = useState<readonly string[]>([]);
   const [statuses, setStatuses] = useState<Record<string, EverydayDecisionStatus>>({});
@@ -1665,8 +1669,12 @@ export function EverydayShell({
     }
   }
 
+  const shellClass = ["everyday-shell", theme === "public" ? "everyday-shell--public" : ""]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="everyday-shell" style={experienceTokenStyle("everyday")}>
+    <div className={shellClass} style={experienceTokenStyle(theme === "public" ? "everydayLight" : "everyday")}>
       <main className={dashboardOnly ? "everyday-shell__main everyday-shell__main--dashboard" : "everyday-shell__main"}>
         {dashboardFirst && (
           <WorkSummary data={{ ...data, room, thread, approvals: pending }} onConnectorConnect={onConnectorConnect} />

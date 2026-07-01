@@ -158,7 +158,7 @@ function StaticPublicDashboard(): React.JSX.Element {
     <div className="public-dashboard" style={experienceTokenStyle("onboarding")}>
       <PublicDoorNav className="public-dashboard__nav" startHref={TELEGRAM_BOT_URL} />
       <h1 className="sr-only">Marketing dashboard</h1>
-      <EverydayShell data={emptyEverydayData()} dashboardFirst dashboardOnly />
+      <EverydayShell data={emptyEverydayData()} dashboardFirst dashboardOnly theme="public" />
       <PublicDoorFooter className="public-dashboard__footer" />
     </div>
   );
