@@ -21,7 +21,8 @@ test("production smoke covers the public routes that sell and prove ipop", () =>
   for (const required of ["/", "/start", "/dashboard", "/pricing", "/login", "/signup", "/terms", "/privacy", "/does-not-exist"]) {
     assert.ok(paths.includes(required), required);
   }
-  assert.ok(ROUTE_CONTRACTS.find((contract) => contract.path === "/dashboard")?.texts.includes("agent work by business impact"));
+  assert.ok(ROUTE_CONTRACTS.find((contract) => contract.path === "/dashboard")?.texts.includes("work that matters"));
+  assert.ok(ROUTE_CONTRACTS.find((contract) => contract.path === "/does-not-exist")?.texts.includes("Page not found"));
   assert.ok(ROUTE_CONTRACTS.find((contract) => contract.path === "/pricing")?.texts.includes("$499"));
 });
 

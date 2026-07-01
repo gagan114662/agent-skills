@@ -22,7 +22,16 @@ const SSR_BUNDLE = join(WEB_ROOT, "dist-ssr", "entry-server.js");
 
 async function main() {
   // Pull the rendered pages + pure helpers out of the SSR bundle.
-  const { prerenderPages, resolveOrigin, resolveBuildSha, injectBuildStamp, injectPage, buildSitemap, buildRobots } = await import(
+  const {
+    prerenderPages,
+    prerenderNotFoundPage,
+    resolveOrigin,
+    resolveBuildSha,
+    injectBuildStamp,
+    injectPage,
+    buildSitemap,
+    buildRobots,
+  } = await import(
     pathToFileURL(SSR_BUNDLE).href
   );
 
@@ -45,6 +54,14 @@ async function main() {
     await writeFile(outPath, finalHtml, "utf8");
     written.push(`${page.urlPath} → dist/${page.outFile}`);
   }
+
+  const notFoundPage = prerenderNotFoundPage();
+  await writeFile(
+    join(DIST, notFoundPage.outFile),
+    injectBuildStamp(injectPage(template, notFoundPage, origin), buildSha),
+    "utf8",
+  );
+  written.push(`${notFoundPage.urlPath} → dist/${notFoundPage.outFile}`);
 
   // Sitemap + robots at the dist root.
   await writeFile(join(DIST, "sitemap.xml"), buildSitemap(origin, pages), "utf8");

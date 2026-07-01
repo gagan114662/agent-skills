@@ -27,7 +27,6 @@
     { "source": "/guides/:path*", "destination": "/index.html" },
     { "source": "/changelog/:path*", "destination": "/index.html" },
     { "source": "/brand/:path*", "destination": "/index.html" },
-    { "source": "/segments/:path*", "destination": "/index.html" },
-    { "source": "/:path*", "destination": "/index.html" }
+    { "source": "/segments/:path*", "destination": "/index.html" }
   ]
 }

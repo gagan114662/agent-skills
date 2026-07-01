@@ -24,12 +24,12 @@ describe("Vercel API rewrites", () => {
     }
   });
 
-  it("routes arbitrary unknown public URLs to the app so React can render the branded 404", () => {
+  it("does not rewrite arbitrary unknown public URLs to the SPA shell", () => {
     expect(rewriteFor("/(.*)")).toBeUndefined();
-    expect(vercelConfig.rewrites.at(-1)).toEqual({ source: "/:path*", destination: "/index.html" });
+    expect(rewriteFor("/:path*")).toBeUndefined();
   });
 
-  it("keeps dynamic public SPA prefixes before the final branded-404 fallback", () => {
+  it("keeps only explicit dynamic public SPA prefixes on the app shell", () => {
     expect(rewriteSourcesTo("/index.html")).toEqual([
       "/status/:path*",
       "/dogfood/:path*",
@@ -39,7 +39,6 @@ describe("Vercel API rewrites", () => {
       "/changelog/:path*",
       "/brand/:path*",
       "/segments/:path*",
-      "/:path*",
     ]);
   });
 });
