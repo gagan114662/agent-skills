@@ -104,6 +104,25 @@ function listNames(names: string[]): string {
   return names.slice(0, -1).join(", ") + ", and " + names[names.length - 1];
 }
 
+function connectionHelp(providerName: string, appUrl: string): string {
+  if (providerName.toLowerCase() === "telegram") {
+    return (
+      "I do not know this Telegram chat yet. Open " +
+      appUrl +
+      ", tap Connect Telegram, press Start in the bot, then send this brief again."
+    );
+  }
+  return (
+    "I do not know this " +
+    providerName +
+    " room yet. Open " +
+    appUrl +
+    ", connect " +
+    providerName +
+    ", then send the brief again."
+  );
+}
+
 function buildSubtask(handle: (typeof LAUNCH_HANDLES)[number], agentMemberId: string, objective: string): Subtask {
   const title = displayHandle(handle);
   const lane = LANE_BY_HANDLE[handle];
@@ -180,14 +199,7 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
       if (!owner) {
         return {
           status: "not_connected",
-          replyText:
-            "I do not know this " +
-            providerName +
-            " room yet. Open " +
-            appUrl +
-            ", connect " +
-            providerName +
-            ", then send the brief again.",
+          replyText: connectionHelp(providerName, appUrl),
         };
       }
 
@@ -258,9 +270,7 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
           parentMessageId: rootMessage.id,
           alsoSentToChannel: true,
           body:
-            "Blocked before starting the Codex marketing team: " +
-            codexStatus.reason +
-            "\nConnect subscription auth: " +
+            "The marketing team is ready, but the agent runtime is not connected for this workspace yet.\nConnect it here: " +
             appUrl,
         });
         await deliverPostedMessage(input.log, agentIdentity, channel, blocked);
@@ -271,10 +281,8 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
           messageId: rootMessage.id,
           codexStatus,
           replyText:
-            "I opened the marketing room, but Codex subscription auth is not connected yet. Connect it here: " +
-            appUrl +
-            "\nreason: " +
-            codexStatus.reason,
+            "I opened the marketing room, but the agent runtime is not connected yet. Connect it in ipop, then send the brief again: " +
+            appUrl,
         };
       }
 
@@ -313,11 +321,11 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
         teamRunId,
         subtaskCount: subtasks.length,
         replyText:
-          "I opened the marketing room. " +
           names +
-          " are starting on: " +
+          " are in the room. They are starting on: " +
           snippet(objective, 120) +
-          "\nOpen the room: " +
+          "\nUseful drafts and approval requests will mirror back here." +
+          "\nOpen the full room: " +
           appUrl,
       };
     },
