@@ -176,6 +176,78 @@ describe("messaging readiness (#1426)", () => {
     expect(staleOutbound.latestOutboundProof?.stale).toBe(true);
   });
 
+  it("treats Telegram inbound-first chat as healthy after the team responds in the same room", () => {
+    const inboundBrief = externalProof({
+      direction: "inbound",
+      channelId: "telegram-room",
+      messageId: "owner-brief",
+      providerMessageId: "tg-inbound-1",
+      createdAt: new Date(nowMs - 2_000),
+    });
+    const teamResponse = externalProof({
+      direction: "outbound",
+      channelId: "telegram-room",
+      messageId: "team-response",
+      providerMessageId: "tg-outbound-1",
+      createdAt: new Date(nowMs - 1_000),
+    });
+
+    const readiness = buildExternalProviderReadiness({
+      provider: "telegram",
+      label: "Telegram",
+      configured: true,
+      missingConfig: [],
+      connection: connection(),
+      destination: "123456",
+      outboundProof: teamResponse,
+      inboundProof: inboundBrief,
+      nowMs,
+    });
+
+    expect(readiness.state).toBe("healthy");
+    expect(readiness.healthy).toBe(true);
+    expect(readiness.latestInboundProof?.messageId).toBe("owner-brief");
+    expect(readiness.latestOutboundProof?.messageId).toBe("team-response");
+    expect(readiness.notes).not.toContain(
+      "latest Telegram inbound proof has not yet received a newer team response in the same room",
+    );
+  });
+
+  it("keeps Telegram waiting when the latest inbound brief has no newer team response yet", () => {
+    const previousResponse = externalProof({
+      direction: "outbound",
+      channelId: "telegram-room",
+      messageId: "previous-team-response",
+      providerMessageId: "tg-outbound-old",
+      createdAt: new Date(nowMs - 2_000),
+    });
+    const latestInboundBrief = externalProof({
+      direction: "inbound",
+      channelId: "telegram-room",
+      messageId: "new-owner-brief",
+      providerMessageId: "tg-inbound-new",
+      createdAt: new Date(nowMs - 1_000),
+    });
+
+    const readiness = buildExternalProviderReadiness({
+      provider: "telegram",
+      label: "Telegram",
+      configured: true,
+      missingConfig: [],
+      connection: connection(),
+      destination: "123456",
+      outboundProof: previousResponse,
+      inboundProof: latestInboundBrief,
+      nowMs,
+    });
+
+    expect(readiness.state).toBe("outbound_sent");
+    expect(readiness.healthy).toBe(false);
+    expect(readiness.notes).toContain(
+      "latest Telegram inbound proof has not yet received a newer team response in the same room",
+    );
+  });
+
   it("does not mark external-room readiness healthy from unthreaded inbound proof", () => {
     const readiness = buildExternalProviderReadiness({
       provider: "whatsapp",
