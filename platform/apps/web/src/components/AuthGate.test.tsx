@@ -81,7 +81,43 @@ describe("AuthGate routing", () => {
     await userEvent.type(screen.getByLabelText(/password/i), "hunter2");
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: /you're already in/i })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: /this browser is signed in/i })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("shows the active account boundary on /login instead of a fake logged-in shortcut (#1512)", async () => {
+    act(() => navigate("/login"));
+    renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: async () => TEST_IDENTITY },
+    );
+
+    expect(await screen.findByRole("heading", { name: /this browser is signed in/i })).toBeInTheDocument();
+    expect(screen.getByText(/you're signed in as ada for workspace w1/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
+    expect(screen.queryByText(/already signed in/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/you're already in/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
+  });
+
+  it("lets a signed-in visitor sign out from /login and reach the login form (#1512)", async () => {
+    act(() => navigate("/login"));
+    const { store } = renderWithStore(
+      <AuthGate>
+        <div>WORKSPACE CONTENT</div>
+      </AuthGate>,
+      { me: async () => TEST_IDENTITY },
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /sign out/i }));
+
+    expect(store.getState().phase).toBe("anon");
+    expect(window.location.pathname).toBe("/login");
+    expect(await screen.findByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
   });
 
@@ -510,7 +546,7 @@ describe("AuthGate routing", () => {
       { me: async () => TEST_IDENTITY },
     );
 
-    expect(await screen.findByRole("heading", { name: /you're already in/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /this browser is signed in/i })).toBeInTheDocument();
     expect(screen.queryByText("WORKSPACE CONTENT")).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
   });
