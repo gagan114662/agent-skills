@@ -616,6 +616,10 @@ function PostSignupCheckoutIntent({ children }: { children: ReactNode }): React.
 }
 
 function SignedInAuthRoute({ mode }: { mode: Mode }): React.JSX.Element {
+  const { identity } = useAppState();
+  const store = useStore();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState(false);
   const hasCheckoutPlan =
     typeof window !== "undefined" &&
     mode === "signup" &&
@@ -629,14 +633,35 @@ function SignedInAuthRoute({ mode }: { mode: Mode }): React.JSX.Element {
     );
   }
 
+  async function onSignOut(): Promise<void> {
+    setIsSigningOut(true);
+    setSignOutError(false);
+    try {
+      await store.logout();
+      replace("/login");
+    } catch {
+      setSignOutError(true);
+      setIsSigningOut(false);
+    }
+  }
+
+  const signedInAs = identity?.displayName?.trim() || "this account";
+  const workspaceLabel = identity?.workspaceId ? `workspace ${identity.workspaceId}` : "this workspace";
+
   return (
     <main className="splash" role="main" aria-labelledby="signed-in-auth-title">
       <PopMark burst />
-      <p className="auth__trial-badge">Already signed in</p>
-      <h1 id="signed-in-auth-title">{mode === "login" ? "You're already in" : "Your workspace is ready"}</h1>
+      <p className="auth__trial-badge">Signed-in workspace</p>
+      <h1 id="signed-in-auth-title">{mode === "login" ? "This browser is signed in" : "Your workspace is ready"}</h1>
       <p>
-        Head to the agent room, or pick a plan from pricing if you want to change what the team can do.
+        You're signed in as {signedInAs} for {workspaceLabel}. Open the agent room, switch plans, or sign
+        out to use a different account.
       </p>
+      {signOutError ? (
+        <p className="form-error" role="alert">
+          We could not sign out from this browser. Try again.
+        </p>
+      ) : null}
       <div className="auth__actions">
         <Link className="btn btn--primary" href={APP_ROUTES.everyday}>
           Open agent room
@@ -644,6 +669,9 @@ function SignedInAuthRoute({ mode }: { mode: Mode }): React.JSX.Element {
         <Link className="btn" href="/pricing">
           View pricing
         </Link>
+        <button className="btn" type="button" onClick={onSignOut} disabled={isSigningOut}>
+          {isSigningOut ? "Signing out..." : "Sign out"}
+        </button>
       </div>
     </main>
   );
