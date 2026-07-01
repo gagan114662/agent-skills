@@ -388,7 +388,7 @@ describe("pricing page + trial framing copy (#214)", () => {
         "What do priority autonomy and deploy-to-live mean?",
       ]),
     );
-    expect(matched.some((item) => /three agent seats|ten seats|department fleet/i.test(item.a))).toBe(true);
+    expect(matched.some((item) => /five agent seats|ten seats|department fleet/i.test(item.a))).toBe(true);
     expect(matched.some((item) => /priority autonomy|deploy-to-live/i.test(item.a))).toBe(true);
   });
 

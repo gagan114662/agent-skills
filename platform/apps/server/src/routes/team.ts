@@ -33,6 +33,11 @@ interface SubtaskBody {
   task?: string;
   branch?: string;
   harness?: string;
+  phase?: number;
+}
+
+function parseSubtaskPhase(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 /**
@@ -88,11 +93,13 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
       if (target.kind !== "agent") {
         return reply.code(400).send({ error: "subtask.agentMemberId must reference an agent member" });
       }
+      const phase = parseSubtaskPhase(s.phase);
       subtasks.push({
         subtaskId: newId(),
         agentMemberId: target.id,
         task: s.task,
         branch: s.branch,
+        ...(phase ? { phase } : {}),
         preferredHarness: isHarnessKind(s.harness) ? s.harness : undefined,
       });
     }
@@ -156,6 +163,7 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         subtaskId: s.subtaskId,
         agentMemberId: s.agentMemberId,
         branch: s.branch,
+        phase: s.phase ?? 1,
         harness: s.preferredHarness ?? null,
       })),
     });

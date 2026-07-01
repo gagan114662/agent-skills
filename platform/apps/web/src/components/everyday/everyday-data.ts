@@ -274,7 +274,7 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
       ],
       capacity: [
         { label: "campaigns running", value: "0 / 1", detail: "brief one campaign before upgrading", tone: "neutral", proof: "starter lane is unused" },
-        { label: "team members active", value: "0 / 3", detail: "room has not started", tone: "neutral", proof: "no active team packet" },
+        { label: "team members active", value: "0 / 5", detail: "room has not started", tone: "neutral", proof: "no active team packet" },
         { label: "monthly work budget", value: "$0 / $200", detail: "upgrade only after useful work is queued", tone: "neutral", proof: "no spend or work receipt yet" },
       ],
       funnel: [
