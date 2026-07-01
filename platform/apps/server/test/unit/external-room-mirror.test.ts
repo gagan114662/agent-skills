@@ -175,6 +175,101 @@ describe("external room mirror (#1424)", () => {
     expect(recordReceipt).not.toHaveBeenCalled();
   });
 
+  it("keeps Telegram rooms free of runtime receipts and local artifact paths", async () => {
+    const telegramSend = vi.fn(async () => ({
+      status: "sent" as const,
+      chatId: "123456",
+      providerMessageId: "tg-1",
+    }));
+    const mirror = createExternalRoomMirror({
+      telegram: { send: telegramSend },
+      whatsapp: { send: vi.fn() },
+      resolveSecrets: vi.fn(async (_workspaceId, serviceKey) =>
+        serviceKey === "telegram_room" ? { TELEGRAM_CHAT_ID: "123456" } : {},
+      ),
+      getReceiptForMessage: vi.fn(async () => undefined),
+      recordReceipt: vi.fn(async () => undefined),
+      getMember: vi.fn(async () => ({ id: "agent-1", kind: "agent", displayName: "Scout" })),
+    });
+
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({ id: "session-complete", body: "✅ session completed (exit 0)" }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({
+        id: "tool-note",
+        body:
+          "`curl` is not installed in this container, so I’m using the browser-backed checks I already ran.",
+      }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({
+        id: "launch-plan",
+        body: [
+          "Receipt left: [scout-launch-receipt.md](/home/reload/agent-workspaces/run/scout-launch-receipt.md)",
+          "",
+          "Best 3-step launch plan:",
+          "",
+          "1. Run a Telegram-first proof sprint.",
+          "2. Turn QA into proof.",
+          "3. Convert proof into one offer.",
+        ].join("\n"),
+      }),
+      source: "agent_post",
+    });
+
+    expect(telegramSend).toHaveBeenCalledTimes(1);
+    const mirrored = telegramSend.mock.calls[0]?.[0].text ?? "";
+    expect(mirrored).toContain("Scout: Best 3-step launch plan:");
+    expect(mirrored).toContain("1. Run a Telegram-first proof sprint.");
+    expect(mirrored).not.toMatch(/session completed|curl|browser-backed|Receipt left|\/home\/reload/);
+  });
+
+  it("deduplicates identical Telegram mirror bursts in the same room", async () => {
+    const telegramSend = vi.fn(async () => ({
+      status: "sent" as const,
+      chatId: "123456",
+      providerMessageId: "tg-1",
+    }));
+    const recordReceipt = vi.fn(async () => undefined);
+    const mirror = createExternalRoomMirror({
+      telegram: { send: telegramSend },
+      whatsapp: { send: vi.fn() },
+      resolveSecrets: vi.fn(async (_workspaceId, serviceKey) =>
+        serviceKey === "telegram_room" ? { TELEGRAM_CHAT_ID: "123456" } : {},
+      ),
+      getReceiptForMessage: vi.fn(async () => undefined),
+      recordReceipt,
+      getMember: vi.fn(async () => ({ id: "agent-1", kind: "agent", displayName: "Quill" })),
+    });
+
+    const body = "Best 3-step launch plan:\n\n1. Run the proof sprint.\n2. Package the proof.\n3. Sell the offer.";
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({ id: "deliverable-1", body }),
+      source: "agent_post",
+    });
+    await mirror.mirror({
+      workspaceId: "w1",
+      channelId: "c1",
+      message: message({ id: "deliverable-2", body }),
+      source: "agent_post",
+    });
+
+    expect(telegramSend).toHaveBeenCalledTimes(1);
+    expect(recordReceipt).toHaveBeenCalledTimes(1);
+    expect(telegramSend.mock.calls[0]?.[0].text).toContain("Quill: Best 3-step launch plan:");
+  });
+
   it("summarizes plain shell transcripts before mirroring customer rooms (#1496)", async () => {
     const telegramSend = vi.fn(async () => ({
       status: "sent" as const,
@@ -287,7 +382,7 @@ describe("external room mirror (#1424)", () => {
       mirror.mirror({
         workspaceId: "w1",
         channelId: "c1",
-        message: message(),
+        message: message({ body: "working on the launch after Telegram failure" }),
         source: "agent_post",
       }),
     ).resolves.toBeUndefined();
