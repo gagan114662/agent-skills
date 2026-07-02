@@ -77,6 +77,7 @@ import {
   VENTURE_DEPLOY_ACTION,
   REALWORLD_PUBLISH_ACTION,
   SOCIAL_PUBLISH_POST_ACTION,
+  INTENT_REPLY_ACTION,
   EMAIL_LIVE_SEND_ACTION,
   CAPABILITY_MINT_ACTION,
   SEARCH_CONSOLE_SUBMIT_ACTION,
@@ -744,6 +745,7 @@ const venturePaymentMethod = makeRecordedOnlyApproval(
 const ventureDeploy = makeRecordedOnlyApproval(VENTURE_DEPLOY_ACTION, "venture deploy");
 const realworldPublish = makeRecordedOnlyApproval(REALWORLD_PUBLISH_ACTION, "real-world publish");
 const emailLiveSend = makeRecordedOnlyApproval(EMAIL_LIVE_SEND_ACTION, "email live send");
+const intentReply = makeRecordedOnlyApproval(INTENT_REPLY_ACTION, "intent reply");
 const capabilityMint = makeRecordedOnlyApproval(CAPABILITY_MINT_ACTION, "capability mint");
 function readString(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];
@@ -856,6 +858,7 @@ export function buildDefaultRegistry(
     ventureDeploy,
     realworldPublish,
     makeSocialPublishPost(social),
+    intentReply,
     emailLiveSend,
     capabilityMint,
     makeSearchConsoleSubmit(searchConsole),

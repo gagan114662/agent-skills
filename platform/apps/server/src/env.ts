@@ -62,6 +62,8 @@ export interface Env {
   automations: AutomationsEnv;
   /** Workflows scheduled tick (#152). */
   workflows: WorkflowsEnv;
+  /** Buying-intent scanner scheduled tick (#1548). */
+  intentScanner: IntentScannerEnv;
   /** Durable, single-leader scheduler (#559) — how the recurring ticks above are driven. */
   scheduler: SchedulerEnv;
   /** Data retention sweeper (#679): old terminal runs/log tails/artifacts. */
@@ -347,6 +349,11 @@ export interface AutomationsEnv {
 
 export interface WorkflowsEnv {
   /** Workflows-tick interval in ms. Default `0` = the background loop is OFF (opt-in, #152). */
+  intervalMs: number;
+}
+
+export interface IntentScannerEnv {
+  /** Intent-scanner tick interval in ms. Default 0 = the background scan is OFF (opt-in, #1548). */
   intervalMs: number;
 }
 
@@ -667,6 +674,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     workflows: {
       // Default 0 (off): the workflows loop is opt-in so tests/CI drive `tickAll()` deterministically.
       intervalMs: Number(source.WORKFLOWS_INTERVAL_MS ?? 0) || 0,
+    },
+    intentScanner: {
+      // Default 0 (off): the buying-intent scanner is opt-in until connectors/owner workspaces enable it.
+      intervalMs: Number(source.INTENT_SCANNER_INTERVAL_MS ?? 0) || 0,
     },
     scheduler: {
       // #559: the leader lease + poll cadence + bounded backoff for the durable scheduler that drives the

@@ -78,6 +78,7 @@ import {
 } from "./venture-intake-flag.js";
 import { VentureBriefPanel } from "./VentureBriefPanel.js";
 import { InboundLeadsPanel } from "./InboundLeadsPanel.js";
+import { BuyingIntentPanel } from "./BuyingIntentPanel.js";
 import { ShortFormBlitzSurface } from "./ShortFormBlitzSurface.js";
 import { MissionCommandCenter } from "./MissionCommandCenter.js";
 import {
@@ -1031,6 +1032,7 @@ export function ConsoleView({
             {shortFormBlitzEnabled && workspaceId && (
               <ShortFormBlitzSurface workspaceId={workspaceId} />
             )}
+            {workspaceId && <BuyingIntentPanel workspaceId={workspaceId} />}
             <InboundLeadsPanel />
             <Board
               columns={model.columns}

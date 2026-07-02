@@ -38,6 +38,7 @@ const MONEY = [
 const NON_MONEY = [
   "external.send",
   "outreach.send",
+  "intent.reply",
   "realworld.publish",
   "venture.deploy",
   "venture.bootstrap",

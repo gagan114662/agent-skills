@@ -206,6 +206,14 @@ app.scheduler.register({
   run: () => app.workflowEngine.tickAll(),
 });
 
+// #1548 buying-intent scanner: opt-in durable tick that scans Reddit/X monitor definitions, dedupes
+// external threads into a scored lead queue, and parks reply drafts behind the owner approval queue.
+app.scheduler.register({
+  key: "intent_scanner",
+  intervalMs: env.intentScanner.intervalMs,
+  run: () => app.intentScannerService.tickAll(),
+});
+
 // #559 durable, single-leader scheduler: begin the single poll loop now that every restart-safe engine
 // tick is registered. Each due job is claimed via a persisted leader lease (exactly-once across replicas),
 // resumes from its persisted cursor after a restart, and is retried on bounded backoff on failure. The
