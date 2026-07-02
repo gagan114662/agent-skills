@@ -62,6 +62,87 @@ describe("team channel protocol (encode / tryParse)", () => {
     expect(tryParseTeamEvent(body)).toBeNull();
   });
 
+  it("round-trips a validated channel-native draft set (#1541)", () => {
+    const event = sample({
+      artifact: {
+        kind: "draft_set",
+        schemaVersion: 1,
+        drafts: [
+          {
+            format: "google_rsa",
+            title: "Search ads",
+            fields: {
+              headlines: Array.from({ length: 15 }, (_, i) => "Proof headline " + (i + 1)),
+              descriptions: Array.from({ length: 4 }, (_, i) => "Specific proof-led description " + (i + 1)),
+            },
+            citations: ["Homepage says marketing team in your messages"],
+          },
+          {
+            format: "meta_ad",
+            title: "Founder ad",
+            fields: { hook: "Your marketing room is already awake.", body: "Brief Scout and Quill from chat.", cta: "Start", headline: "Marketing in messages", description: "Drafts await approval" },
+            citations: ["https://ipop.ai"],
+          },
+          {
+            format: "linkedin_post",
+            title: "LinkedIn launch",
+            fields: { hook: "Most AI marketing tools still make you manage the work.", body: "ipop makes the team visible in the room.", cta: "Reply for the checklist" },
+            citations: ["Scout found founder ICP"],
+          },
+          {
+            format: "x_thread",
+            title: "X thread",
+            fields: { tweets: ["Your marketing team should show its work.", "Scout researches, Quill drafts, and you approve before anything ships."] },
+            citations: ["Room names Scout and Quill"],
+          },
+          {
+            format: "email",
+            title: "Welcome email",
+            fields: { subject: "Your marketing room is ready", preheader: "Scout found the first useful move.", body: "Here is the first draft for review.", cta: "Review the draft", plainTextAlt: "Review the first draft in ipop." },
+            citations: ["source URL cited"],
+          },
+          {
+            format: "landing_hero",
+            title: "Homepage hero",
+            fields: { headline: "Marketing work, visible in messages", subhead: "Scout researches, Quill drafts, and every send waits for your approval.", cta: "Start the room" },
+            citations: ["siteSummary says messaging-native"],
+          },
+          {
+            format: "seo_snippet",
+            title: "SEO snippet",
+            fields: { title: "AI marketing team in your messages", metaDescription: "AI teammates research your site, draft channel-ready marketing work, and keep every send or spend behind approval while you watch progress in messages.", intent: "brand-aware marketing team software" },
+            citations: ["siteSummary says marketing team"],
+          },
+        ],
+      },
+    });
+
+    expect(tryParseTeamEvent(encodeTeamEvent(event))).toEqual(event);
+  });
+
+  it("surfaces draft set validator failures as blocked timeline events (#1541)", () => {
+    const body = `${TEAM_EVENT_MARKER} ${JSON.stringify({
+      ...sample(),
+      artifact: {
+        kind: "draft_set",
+        schemaVersion: 1,
+        drafts: [
+          {
+            format: "google_rsa",
+            title: "Bad search ads",
+            fields: { headlines: ["one headline only"], descriptions: ["one description only"] },
+            citations: ["https://ipop.ai"],
+          },
+        ],
+      },
+    })}`;
+
+    expect(tryParseTeamEvent(body)).toMatchObject({
+      kind: "blocked",
+      summary: "blocked: invalid draft_set artifact: google_rsa.headlines: must include exactly 15 headlines",
+    });
+  });
+
   it("tags the body with the marker prefix", () => {
     expect(encodeTeamEvent(sample())).toMatch(new RegExp(`^${TEAM_EVENT_MARKER} `));
   });

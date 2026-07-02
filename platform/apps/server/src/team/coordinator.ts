@@ -101,6 +101,7 @@ function uniqueArtifactKinds(kinds: readonly TeamArtifactKind[] | undefined): Te
 
 function artifactLabel(kind: TeamArtifactKind): string {
   if (kind === "scout_research") return "Scout research artifact";
+  if (kind === "draft_set") return "Validated channel-native draft set";
   return kind;
 }
 
@@ -111,8 +112,7 @@ function artifactProductionInstructions(
 ): string {
   if (kinds.length === 0) return "";
   const sections = kinds.map((kind) => {
-    if (kind !== "scout_research") return "- " + kind;
-    return [
+    if (kind === "scout_research") return [
       "- scout_research: post one valid team milestone event when your research is ready.",
       "  The line must start with ::team-event:: followed by JSON with this exact shape:",
       "  {",
@@ -136,6 +136,21 @@ function artifactProductionInstructions(
       "    }",
       "  }",
     ].join("\n");
+    if (kind === "draft_set") return [
+      "- draft_set: post one valid team milestone event when your channel-native drafts are ready.",
+      "  The line must start with ::team-event:: followed by JSON. The artifact must be:",
+      '  { "kind": "draft_set", "schemaVersion": 1, "drafts": [ ... ] }',
+      "  Each draft needs format, title, fields, and citations from Scout proofPoints/sourceUrls.",
+      "  Supported formats and hard validator rules:",
+      "  - google_rsa: fields.headlines = exactly 15 strings, each <=30 chars; fields.descriptions = exactly 4 strings, each <=90 chars.",
+      "  - meta_ad: fields.hook/body/cta required; hook <=125 chars; headline <=40; description <=30.",
+      "  - linkedin_post: fields.hook/body required; hook <=180 chars; cta <=120.",
+      "  - x_thread: fields.tweets = 2 to 8 strings, each <=280 chars.",
+      "  - email: subject <=45, preheader <=90, body/cta/plainTextAlt required, no spam-trigger phrasing.",
+      "  - landing_hero: headline <=70, subhead <=160, cta <=30.",
+      "  - seo_snippet: title <=60, metaDescription 150-160 chars, intent required.",
+    ].join("\n");
+    return "- " + kind;
   });
   return [
     "Required team artifact production contract",
@@ -269,6 +284,14 @@ export class TeamCoordinator {
         parentSpanId,
       });
       await this.deps.launcher.join(id);
+      const missingProducedArtifacts = await this.missingProducedArtifacts(input, subtask);
+      if (missingProducedArtifacts.length > 0) {
+        const error =
+          "blocked: missing produced artifact: " + missingProducedArtifacts.map(artifactLabel).join(", ");
+        delivered = await this.announce(input, subtask, "blocked", error);
+        visibilityDegraded = visibilityDegraded || !delivered;
+        return { subtaskId: subtask.subtaskId, sessionId: id, ok: false, error, visibilityDegraded };
+      }
       delivered = await this.announce(input, subtask, "done", `done: ${lane}`);
       visibilityDegraded = visibilityDegraded || !delivered;
       return { subtaskId: subtask.subtaskId, sessionId: id, ok: true, visibilityDegraded };
@@ -318,6 +341,21 @@ export class TeamCoordinator {
     }
     if (sections.length === 0) return { ok: true, task: subtask.task };
     return { ok: true, task: sections.join("\n\n") + "\n\n" + subtask.task };
+  }
+
+  private async missingProducedArtifacts(input: TeamRunInput, subtask: Subtask): Promise<TeamArtifactKind[]> {
+    const producedKinds = uniqueArtifactKinds(subtask.producesArtifacts);
+    if (producedKinds.length === 0) return [];
+    const events = await this.readEvents(input.channelId, { limit: 200 });
+    return producedKinds.filter(
+      (kind) =>
+        !events.some(
+          (event) =>
+            event.teamRunId === input.teamRunId &&
+            event.subtaskId === subtask.subtaskId &&
+            event.artifact?.kind === kind,
+        ),
+    );
   }
 
   /** Post a coordinator-authored lifecycle event to the team channel (queued on failure). */

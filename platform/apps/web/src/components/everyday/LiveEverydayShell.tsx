@@ -540,14 +540,16 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     lane: "creative platform",
     phase: 2,
     requiresArtifacts: ["scout_research"],
+    producesArtifacts: ["draft_set"],
     immediateRequest: (goal) =>
       "You own the drafts. Use the validated Scout research artifact that the coordinator injects into this task, then turn its strongest proof points into a distinctive marketing platform for " +
       goal +
-      ". Produce named, approval-ready draft assets for every format the owner requested. Reference award-winning work from another category and adapt the mechanism, not the surface. Cite the artifact proofPoints or sourceUrls used by each draft.",
+      ". Produce named, approval-ready draft assets for every format the owner requested. Reference award-winning work from another category and adapt the mechanism, not the surface. Produce the required draft_set artifact with channel-native formats that pass validation, and cite the artifact proofPoints or sourceUrls used by each draft.",
     outputFormat: [
       "campaign platform",
       "why it is not generic AI copy",
       "named draft artifacts with format labels",
+      "valid draft_set artifact for requested formats",
       "research proof points cited per draft",
       "first asset draft ready for approval",
     ],
@@ -571,7 +573,7 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     role: "Lens",
     lane: "taste and proof",
     phase: 4,
-    requiresArtifacts: ["scout_research"],
+    requiresArtifacts: ["scout_research", "draft_set"],
     immediateRequest: (goal) =>
       "Review Scout, Quill, and Echo's room artifacts for brand taste, originality, proof, and anti-slop quality for " +
       goal +

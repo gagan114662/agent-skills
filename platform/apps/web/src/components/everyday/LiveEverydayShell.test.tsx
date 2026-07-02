@@ -710,13 +710,14 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(scout?.producesArtifacts).toEqual(["scout_research"]);
     expect(quill?.phase).toBe(2);
     expect(quill?.requiresArtifacts).toEqual(["scout_research"]);
+    expect(quill?.producesArtifacts).toEqual(["draft_set"]);
     expect(echo?.phase).toBe(3);
     expect(echo?.requiresArtifacts).toEqual(["scout_research"]);
     expect(lens?.phase).toBe(4);
-    expect(lens?.requiresArtifacts).toEqual(["scout_research"]);
+    expect(lens?.requiresArtifacts).toEqual(["scout_research", "draft_set"]);
     expect(quill?.task).toContain("You own the drafts");
     expect(quill?.task).toContain("Produce named, approval-ready draft assets");
-    expect(quill?.task).toContain("Cite the artifact proofPoints or sourceUrls");
+    expect(quill?.task).toContain("Produce the required draft_set artifact");
     expect(lens?.task).toContain("If a required draft is missing");
     for (const subtask of subtasks) {
       expect(subtask.task).toContain("1. Task context");

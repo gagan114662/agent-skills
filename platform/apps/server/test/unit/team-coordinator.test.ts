@@ -99,6 +99,34 @@ const scoutResearchEvent: TeamEvent = {
   },
 };
 
+const draftSetEvent: TeamEvent = {
+  teamRunId: "run_1",
+  subtaskId: "quill",
+  agentMemberId: "mem_quill",
+  kind: "milestone",
+  summary: "draft set ready: acme.test",
+  branch: "b-quill",
+  createdAt: "2026-06-08T00:01:00.000Z",
+  artifact: {
+    kind: "draft_set",
+    schemaVersion: 1,
+    drafts: [
+      {
+        format: "email",
+        title: "Launch email",
+        fields: {
+          subject: "Audit trails without chaos",
+          preheader: "Acme found the spreadsheet gap.",
+          body: "Here is the proof-led draft.",
+          cta: "Review the draft",
+          plainTextAlt: "Review the proof-led draft.",
+        },
+        citations: ["SOC2 page mentions audit exports"],
+      },
+    ],
+  },
+};
+
 describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure isolation)", () => {
   it("never exceeds the max-concurrency cap", async () => {
     const launcher = new FakeLauncher();
@@ -302,6 +330,183 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(launcher.launched[0]?.task).toContain('"subtaskId": "scout"');
     expect(launcher.launched[0]?.task).toContain('"kind": "scout_research"');
     expect(launcher.launched[0]?.task).toContain("research acme.test");
+  });
+
+  it("adds channel-native draft validators to Quill producer tasks (#1541)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft channel-native assets",
+          branch: "b-quill",
+          requiresArtifacts: ["scout_research"],
+          producesArtifacts: ["draft_set"],
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.task).toContain("draft_set");
+    expect(launcher.launched[0]?.task).toContain("google_rsa");
+    expect(launcher.launched[0]?.task).toContain("subject <=45");
+    expect(launcher.launched[0]?.task).toContain("draft channel-native assets");
+  });
+
+  it("does not mark a draft producer done until a valid draft_set is posted (#1541)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel, events } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft channel-native assets",
+          branch: "b-quill",
+          producesArtifacts: ["draft_set"],
+        },
+      ],
+    });
+
+    expect(launcher.launched).toHaveLength(1);
+    expect(result.results[0]).toMatchObject({
+      subtaskId: "quill",
+      ok: false,
+      error: "blocked: missing produced artifact: Validated channel-native draft set",
+    });
+    expect(events().some((event) => event.kind === "done" && event.subtaskId === "quill")).toBe(false);
+    expect(events().find((event) => event.kind === "blocked")?.summary).toBe(
+      "blocked: missing produced artifact: Validated channel-native draft set",
+    );
+  });
+
+  it("makes invalid draft_set validator failures visible in the timeline (#1541)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel, postBody } = makeChannel();
+    postBody(encodeTeamEvent({
+      ...draftSetEvent,
+      artifact: {
+        kind: "draft_set",
+        schemaVersion: 1,
+        drafts: [
+          {
+            format: "email",
+            title: "Bad email",
+            fields: {
+              subject: "This subject line is far too long for the email channel validator",
+              preheader: "Short preheader",
+              body: "Body",
+              cta: "Review",
+              plainTextAlt: "Body",
+            },
+            citations: ["SOC2 page mentions audit exports"],
+          },
+        ],
+      },
+    }));
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const seen = await coordinator.readEvents("ch_1");
+
+    expect(seen).toContainEqual(
+      expect.objectContaining({
+        kind: "blocked",
+        summary: "blocked: invalid draft_set artifact: email.subject: must be 45 characters or fewer",
+      }),
+    );
+  });
+
+  it("blocks Lens before launch when the validated draft set is missing (#1541)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel, events } = makeChannel();
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "lens",
+          agentMemberId: "mem_lens",
+          task: "review drafts",
+          branch: "b-lens",
+          requiresArtifacts: ["scout_research", "draft_set"],
+        },
+      ],
+    });
+
+    expect(launcher.launched).toHaveLength(0);
+    expect(result.results[0]).toMatchObject({
+      subtaskId: "lens",
+      ok: false,
+      error: "blocked: missing required artifact: Validated channel-native draft set",
+    });
+    expect(events().find((event) => event.kind === "blocked")?.summary).toBe(
+      "blocked: missing required artifact: Validated channel-native draft set",
+    );
+  });
+
+  it("injects validated draft sets into Lens review tasks (#1541)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: draftSetEvent });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "lens",
+          agentMemberId: "mem_lens",
+          task: "review drafts",
+          branch: "b-lens",
+          requiresArtifacts: ["scout_research", "draft_set"],
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.task).toContain("Launch email");
+    expect(launcher.launched[0]?.task).toContain("Audit trails without chaos");
+    expect(launcher.launched[0]?.task).toContain("review drafts");
   });
 
   it("isolates a failing subtask — its peers still complete", async () => {
