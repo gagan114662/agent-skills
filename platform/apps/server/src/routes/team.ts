@@ -12,6 +12,16 @@ import type { TeamArtifactKind } from "@reload/shared";
 export interface TeamRoutesOptions {
   coordinator: TeamCoordinator;
   codexSubscription?: CodexSubscriptionStatusProvider;
+  staleSessionReaper?: StaleSessionReaper;
+}
+
+export interface StaleSessionReaper {
+  reap(input: { workspaceId: string; channelId: string }): Promise<StaleSessionReapResult>;
+}
+
+export interface StaleSessionReapResult {
+  scanned: number;
+  reaped: Array<{ sessionId: string; staleForMs: number; canceled: boolean }>;
 }
 
 export interface CodexSubscriptionStatus {
@@ -85,6 +95,7 @@ function parseArtifactKinds(value: unknown): TeamArtifactKind[] | null {
 export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions): Promise<void> {
   const { coordinator } = opts;
   const codexSubscription = opts.codexSubscription ?? disconnectedCodexSubscription;
+  const staleSessionReaper = opts.staleSessionReaper;
 
   app.get("/me/codex/status", async (req, reply) => {
     const id = await requireIdentity(req, reply);
@@ -170,6 +181,16 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
       }
     }
 
+    const reapResult = await staleSessionReaper
+      ?.reap({ workspaceId: id.workspaceId, channelId: cid })
+      .catch((err) => {
+        req.log.warn(
+          { err: err instanceof Error ? err.message : String(err), workspaceId: id.workspaceId, channelId: cid },
+          "team run stale-session reap failed",
+        );
+        return null;
+      });
+
     // Make each agent a legitimate writer in the channel (output + team events land here).
     for (const s of subtasks) {
       await addChannelMember(cid, s.agentMemberId);
@@ -213,6 +234,7 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         requiresArtifacts: s.requiresArtifacts ?? [],
         harness: s.preferredHarness ?? null,
       })),
+      staleSessionsReaped: reapResult?.reaped ?? [],
     });
   });
 

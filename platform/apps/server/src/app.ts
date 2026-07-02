@@ -98,6 +98,7 @@ import { createGitHubProvider } from "./github/factory.js";
 import type { GitHubProvider } from "./github/provider.js";
 import { createDefaultTeamCoordinator } from "./team/default.js";
 import type { TeamCoordinator } from "./team/coordinator.js";
+import { createTeamRunStaleSessionReaper } from "./team/stale-session-reaper.js";
 import { createDefaultAutonomyEngine, autonomyLauncherFrom } from "./autonomy/default.js";
 import type { AutonomyEngine } from "./autonomy/engine.js";
 import { ventureRoutes } from "./routes/venture.js";
@@ -1378,6 +1379,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(teamRoutes, {
     coordinator: teamCoordinator,
     codexSubscription,
+    staleSessionReaper: createTeamRunStaleSessionReaper({ sessionManager }),
   });
   // #17 autonomy: the AutonomyEngine drives the server-owned activity loop (pools, workflows,
   // handoffs, approval gates, guards + kill switch). The background timer is opt-in
