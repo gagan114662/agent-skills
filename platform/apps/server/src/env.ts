@@ -2,6 +2,7 @@ import { hostname } from "node:os";
 import type { ResourceCaps, RuntimeKind } from "./db/repositories/agent-sessions.js";
 import { harnessSpec, parseHarnessKind, type HarnessKind } from "./runtime/harness.js";
 import { parseProfile, profilePreset, type ProfileName } from "./runtime/posture.js";
+import { parseRuntimeProvider, type RuntimeProvider } from "./runtime/provider.js";
 import type { SandboxGitSource } from "./runtime/sandbox.js";
 import type { BillingMode } from "./billing/mode.js";
 import { ConfigValidationError } from "./config/loader.js";
@@ -437,6 +438,11 @@ export interface AgentEnv {
    * local/demo (the default), `prod` = sandbox/claude-code. Reported for the preflight/doctor.
    */
   profile: ProfileName;
+  /**
+   * Runtime provider (#1568): which model vendor's agent CLI executes fleet sessions. Default
+   * `claude` (Anthropic); `AGENT_RUNTIME_PROVIDER=codex` restores the legacy Codex posture.
+   */
+  provider: RuntimeProvider;
   /** Execution backend. Default `local` so tests/CI need no cloud spend. */
   runtime: RuntimeKind;
   /** Which coding-agent harness runs each session (#50). Default `demo` (no model spend). */
@@ -561,7 +567,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       // supplies the runtime/harness DEFAULTS. Precedence is explicit env > profile preset > built-in
       // default, so the default profile `dev` resolves to local/demo exactly as before — additive.
       const profile = parseProfile(source.RELOAD_PROFILE);
-      const preset = profilePreset(profile);
+      // Runtime provider (#1568): Claude by default; `AGENT_RUNTIME_PROVIDER=codex` opts back into
+      // the legacy Codex posture. Drives the prod preset harness + the team-run dispatch default.
+      const provider = parseRuntimeProvider(source.AGENT_RUNTIME_PROVIDER);
+      const preset = profilePreset(profile, provider);
       // Select the coding-agent harness (#50). Default `demo` keeps tests/CI free of model spend;
       // `claude-code` runs the real Claude Code CLI. Explicit AGENT_HARNESS_CMD/ARGS still override.
       const harness = parseHarnessKind(source.AGENT_HARNESS ?? preset.harness);
@@ -586,6 +595,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
         : undefined;
       return {
         profile,
+        provider,
         runtime: parseRuntime(source.AGENT_RUNTIME ?? preset.runtime),
         harness,
         harnessCommand: source.AGENT_HARNESS_CMD ?? spec.command,

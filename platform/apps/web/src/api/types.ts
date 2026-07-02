@@ -635,16 +635,26 @@ export interface TeamRunTimeline {
   }>;
 }
 
-export interface CodexSubscriptionStatus {
+/**
+ * Provider-agnostic runtime readiness (#1568), from `GET /me/runtime/status`. A superset-compatible
+ * evolution of the old Codex-only shape: same field names, widened unions, plus `provider`.
+ */
+export interface RuntimeStatus {
+  provider: "claude" | "codex";
   connected: boolean;
   reason: string;
-  selectedHarness: "codex";
+  selectedHarness: "claude-code" | "codex";
   userAuthenticated: boolean;
   workspaceAuthenticated: boolean;
-  runtimeAuth: "signed_in_subscription" | "missing";
+  runtimeAuth: "signed_in_subscription" | "api_key" | "missing";
+  /** How the runtime authenticates: subscription (primary) or api_key (fallback); null = not connected. */
+  authMode: "subscription" | "api_key" | null;
   fallback: "none";
-  apiKeySatisfies: false;
+  apiKeySatisfies: boolean;
 }
+
+/** Legacy alias (#1282) — `/me/codex/status` now serves the same provider-agnostic shape. */
+export type CodexSubscriptionStatus = RuntimeStatus;
 
 /**
  * The members-rail footer (#371): humans · agents · decisions captured, from `GET /me/department`.

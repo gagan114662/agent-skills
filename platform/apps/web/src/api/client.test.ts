@@ -59,14 +59,38 @@ describe("api client", () => {
     expect(msg.id).toBe("msg1");
   });
 
-  it("getCodexStatus reads the signed-in subscription bridge status", async () => {
+  it("getRuntimeStatus reads the provider-agnostic runtime readiness (#1568)", async () => {
     const payload = {
+      provider: "claude",
+      connected: true,
+      reason: "Anthropic API key auth (deployment env) is ready for agent runs.",
+      selectedHarness: "claude-code",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "api_key",
+      authMode: "api_key",
+      fallback: "none",
+      apiKeySatisfies: true,
+    } as const;
+    const fetchMock = stubFetch(200, payload);
+    const status = await api.getRuntimeStatus();
+
+    const [url, init] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(url).toBe("/me/runtime/status");
+    expect(init.credentials).toBe("include");
+    expect(status).toEqual(payload);
+  });
+
+  it("getCodexStatus reads the legacy status path (now provider-agnostic)", async () => {
+    const payload = {
+      provider: "claude",
       connected: false,
       reason: "not connected",
-      selectedHarness: "codex",
+      selectedHarness: "claude-code",
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "missing",
+      authMode: null,
       fallback: "none",
       apiKeySatisfies: false,
     } as const;

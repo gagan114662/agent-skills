@@ -751,12 +751,12 @@ export const LAUNCH_READINESS = {
     ],
   },
   codex: {
-    title: "Codex operator lane",
+    title: "Operator lane",
     status: "Dogfood handoff, not hidden credential use",
     body:
-      "Agents can package implementation work for the owner's Codex environment and ingest the returned PR, " +
+      "Agents can package implementation work for the owner's connected agent runtime and ingest the returned PR, " +
       "files, tests, and risks as an audited artifact. The production backend does not store or impersonate " +
-      "the owner's ChatGPT session.",
+      "the owner's model-provider session.",
   },
   checklistTitle: "Production checklist",
   checklist: [
@@ -1751,9 +1751,9 @@ export const EVERYDAY = {
    * credential claim.
    */
   codexLane: {
-    title: "Codex operator lane",
+    title: "Operator lane",
     packetTitle: "Operator packet",
-    packetBody: "The exact handoff Codex will receive for this room.",
+    packetBody: "The exact handoff the operator agent will receive for this room.",
     openPacket: "Open packet",
     copyPacket: "Copy packet",
   },

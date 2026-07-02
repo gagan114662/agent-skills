@@ -6,11 +6,35 @@ import { addChannelMember } from "../db/repositories/channels.js";
 import { grantCapability } from "../db/repositories/permissions.js";
 import { newId } from "../db/id.js";
 import type { TeamCoordinator, Subtask } from "../team/coordinator.js";
-import { isHarnessKind } from "../runtime/harness.js";
+import { isHarnessKind, type HarnessKind } from "../runtime/harness.js";
+import {
+  createRuntimeStatusProvider,
+  runtimeStatusFromCodex,
+  DEFAULT_RUNTIME_PROVIDER,
+  type CodexSubscriptionStatus,
+  type CodexSubscriptionStatusProvider,
+  type RuntimeProvider,
+  type RuntimeStatusProvider,
+} from "../runtime/provider.js";
 import type { TeamArtifactKind } from "@reload/shared";
+
+// Re-exported for existing importers — the canonical home moved to runtime/provider.ts (#1568).
+export type { CodexSubscriptionStatus, CodexSubscriptionStatusProvider };
 
 export interface TeamRoutesOptions {
   coordinator: TeamCoordinator;
+  /** Resolved runtime provider (#1568). Default `claude`; `codex` restores the legacy posture. */
+  runtimeProvider?: RuntimeProvider;
+  /** Provider-agnostic readiness source (#1568). When absent, one is derived from the options below. */
+  runtimeStatus?: RuntimeStatusProvider;
+  /**
+   * The deployment's default harness (env `AGENT_HARNESS`) — what a subtask with no explicit pick
+   * executes on. Drives the runtime preflight: `demo` (the dev/test default here) never gates, so
+   * existing pick-free launches are unchanged; app.ts passes the real resolved value.
+   */
+  defaultHarness?: HarnessKind;
+  /** Claude-specific readiness for the team-run gate (explicit `claude-code` subtask picks). */
+  claudeRuntimeStatus?: RuntimeStatusProvider;
   codexSubscription?: CodexSubscriptionStatusProvider;
   staleSessionReaper?: StaleSessionReaper;
 }
@@ -22,21 +46,6 @@ export interface StaleSessionReaper {
 export interface StaleSessionReapResult {
   scanned: number;
   reaped: Array<{ sessionId: string; staleForMs: number; canceled: boolean }>;
-}
-
-export interface CodexSubscriptionStatus {
-  connected: boolean;
-  reason: string;
-  selectedHarness: "codex";
-  userAuthenticated: boolean;
-  workspaceAuthenticated: boolean;
-  runtimeAuth: "signed_in_subscription" | "missing";
-  fallback: "none";
-  apiKeySatisfies: false;
-}
-
-export interface CodexSubscriptionStatusProvider {
-  status(workspaceId: string, memberId: string): Promise<CodexSubscriptionStatus>;
 }
 
 interface SubtaskBody {
@@ -94,19 +103,44 @@ function parseArtifactKinds(value: unknown): TeamArtifactKind[] | null {
  */
 export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions): Promise<void> {
   const { coordinator } = opts;
+  const provider = opts.runtimeProvider ?? DEFAULT_RUNTIME_PROVIDER;
   const codexSubscription = opts.codexSubscription ?? disconnectedCodexSubscription;
+  // The ONE readiness source (#1568). A caller that still injects only `codexSubscription` (legacy
+  // tests/back-compat) gets a provider-aware wrapper: codex delegates to the doctor probe; claude is
+  // fail-closed disconnected until real deps are wired (app.ts always passes `runtimeStatus`).
+  // Claude readiness for the gate: an explicitly injected source wins; else, when the deployment
+  // provider IS claude, the provider-level `runtimeStatus` is that source; else fail-closed.
+  const claudeRuntimeStatus: RuntimeStatusProvider =
+    opts.claudeRuntimeStatus ??
+    (provider === "claude" && opts.runtimeStatus ? opts.runtimeStatus : disconnectedClaudeRuntime);
+  const runtimeStatus: RuntimeStatusProvider =
+    opts.runtimeStatus ??
+    createRuntimeStatusProvider(provider, {
+      claude: claudeRuntimeStatus,
+      codex: codexSubscription,
+    });
   const staleSessionReaper = opts.staleSessionReaper;
 
+  // Provider-agnostic runtime readiness (#1568): what the dashboard should call going forward.
+  app.get("/me/runtime/status", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    return runtimeStatus.status(id.workspaceId, id.memberId);
+  });
+
+  // Legacy paths (deployed dashboards call these): now served by the SAME provider-agnostic status —
+  // the field names are unchanged and `connected`/`reason` keep their meaning, so an older web bundle
+  // keeps working when the provider is Claude instead of Codex.
   app.get("/me/codex/status", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
-    return codexSubscription.status(id.workspaceId, id.memberId);
+    return runtimeStatus.status(id.workspaceId, id.memberId);
   });
 
   app.get("/me/codex/preflight", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
-    return codexSubscription.status(id.workspaceId, id.memberId);
+    return runtimeStatus.status(id.workspaceId, id.memberId);
   });
 
   // Launch a team run: write capability; every subtask targets an agent member in-workspace.
@@ -158,27 +192,39 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
       });
     }
 
-    if (subtasks.some((s) => s.preferredHarness === "codex")) {
-      const status = await codexSubscription.status(id.workspaceId, id.memberId);
-      if (!status.connected) {
-        req.log.warn(
-          {
-            event: "codex_subscription_preflight_blocked",
-            workspaceId: id.workspaceId,
-            memberId: id.memberId,
-            selectedHarness: status.selectedHarness,
-            fallback: status.fallback,
-            apiKeySatisfies: status.apiKeySatisfies,
-            runtimeAuth: status.runtimeAuth,
-          },
-          "codex subscription preflight blocked team run",
-        );
-        return reply.code(409).send({
-          error: status.reason,
-          code: "codex_subscription_not_connected",
-          status,
-        });
-      }
+    // Runtime preflight (#1568, per-harness): a subtask that will execute on a REAL model harness —
+    // an explicit codex/claude-code pick, or no pick (the deployment default fills it in) — must find
+    // THAT harness's runtime connected, else the whole run is blocked up front with an actionable 409.
+    // `demo` never gates, so pick-free dev/test launches are unchanged.
+    const defaultHarness: HarnessKind = opts.defaultHarness ?? "demo";
+    const neededHarnesses = new Set(
+      subtasks.map((s) => s.preferredHarness ?? defaultHarness).filter((kind) => kind !== "demo"),
+    );
+    for (const kind of neededHarnesses) {
+      const status =
+        kind === "codex"
+          ? runtimeStatusFromCodex(await codexSubscription.status(id.workspaceId, id.memberId))
+          : await claudeRuntimeStatus.status(id.workspaceId, id.memberId);
+      if (status.connected) continue;
+      req.log.warn(
+        {
+          event: "runtime_preflight_blocked",
+          provider: status.provider,
+          workspaceId: id.workspaceId,
+          memberId: id.memberId,
+          selectedHarness: status.selectedHarness,
+          fallback: status.fallback,
+          apiKeySatisfies: status.apiKeySatisfies,
+          runtimeAuth: status.runtimeAuth,
+        },
+        "runtime preflight blocked team run",
+      );
+      return reply.code(409).send({
+        error: status.reason,
+        // Legacy code kept for the codex harness so existing consumers keep matching on it.
+        code: status.provider === "codex" ? "codex_subscription_not_connected" : "runtime_not_connected",
+        status,
+      });
     }
 
     const reapResult = await staleSessionReaper
@@ -272,6 +318,27 @@ const disconnectedCodexSubscription: CodexSubscriptionStatusProvider = {
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "missing",
+      fallback: "none",
+      apiKeySatisfies: false,
+    };
+  },
+};
+
+/** Fail-closed Claude readiness for callers that wire no real deps (app.ts always injects one). */
+const disconnectedClaudeRuntime: RuntimeStatusProvider = {
+  async status() {
+    return {
+      provider: "claude",
+      connected: false,
+      reason:
+        "Claude is not connected for this workspace yet. Connect a Claude subscription in " +
+        "Settings → Connect Claude, or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) " +
+        "in the server environment.",
+      selectedHarness: "claude-code",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "missing",
+      authMode: null,
       fallback: "none",
       apiKeySatisfies: false,
     };

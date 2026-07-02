@@ -77,6 +77,12 @@ import { mcpRoutes, type McpRoutesOptions } from "./mcp/http.js";
 import { attachRealtime } from "./realtime/gateway.js";
 import { createDefaultSessionManager } from "./runtime/default.js";
 import { createCodexSubscriptionStatusProvider } from "./runtime/codex-subscription.js";
+import {
+  createClaudeRuntimeStatusProvider,
+  createRuntimeStatusProvider,
+  type RuntimeStatusProvider,
+} from "./runtime/provider.js";
+import { createAgentAuthResolver } from "./runtime/auth-default.js";
 import type { SessionManager } from "./runtime/manager.js";
 import { runRoutes } from "./routes/run.js";
 import { createDefaultRunProcessManager } from "./run/default.js";
@@ -427,6 +433,8 @@ export interface BuildAppOptions {
   teamCoordinator?: TeamCoordinator;
   /** #1282 Codex subscription status gate: tests inject deterministic status; default probes Codex doctor. */
   codexSubscription?: CodexSubscriptionStatusProvider;
+  /** #1568 provider-agnostic runtime readiness: tests inject deterministic status; default derives from the provider. */
+  runtimeStatus?: RuntimeStatusProvider;
   /** Tests may inject a CloudWorkspaceManager (#55); defaults to the repo-backed one. */
   cloudWorkspaceManager?: CloudWorkspaceManager;
   /**
@@ -762,6 +770,28 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const teamCoordinator =
     opts.teamCoordinator ?? createDefaultTeamCoordinator(app.log, sessionManager);
   const codexSubscription = opts.codexSubscription ?? createCodexSubscriptionStatusProvider();
+  // #1568 runtime provider: the fleet executes on Claude by default (AGENT_RUNTIME_PROVIDER=codex
+  // restores the legacy posture). Readiness derives from the SAME AgentAuthResolver the launch
+  // secrets path uses — subscription first (workspace connect or the deployment env
+  // CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`), ANTHROPIC_API_KEY as optional fallback —
+  // so the status and the launch can never disagree. Modes only; values never leave the secrets path.
+  const runtimeProvider = env.agent.provider;
+  const statusAuthResolver = createAgentAuthResolver();
+  const claudeRuntimeStatus = createClaudeRuntimeStatusProvider({
+    resolveAuthMode: async (workspaceId) => {
+      const auth = await statusAuthResolver.resolve(workspaceId);
+      // Thread the loud plain-language cause (e.g. malformed workspace token) into the status.
+      return auth.mode === "none"
+        ? { mode: auth.mode, ...(auth.reason ? { reason: auth.reason } : {}) }
+        : { mode: auth.mode };
+    },
+  });
+  const runtimeStatus =
+    opts.runtimeStatus ??
+    createRuntimeStatusProvider(runtimeProvider, {
+      claude: claudeRuntimeStatus,
+      codex: codexSubscription,
+    });
   const imessageService = opts.imessage ?? createIMessageRelayService(env.imessage);
   const telegramService = opts.telegram ?? createTelegramRoomService(env.telegram);
   const whatsappService = opts.whatsapp ?? createWhatsAppRoomService(env.whatsapp);
@@ -776,7 +806,8 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const inboundTeamLaunch = createInboundTeamLaunchService({
     sessionManager,
     coordinator: teamCoordinator,
-    codexSubscription,
+    runtimeStatus,
+    runtimeProvider,
   });
   app.register(agentSessionRoutes, { sessionManager });
   app.register(scaleRoutes, { admission: scale.admission, config: scale.config, activePlans: scale.activePlans });
@@ -1378,6 +1409,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // SessionManager (so per-session ResourceCaps still apply) and adds a team-level concurrency cap.
   app.register(teamRoutes, {
     coordinator: teamCoordinator,
+    runtimeProvider,
+    runtimeStatus,
+    defaultHarness: env.agent.harness,
+    claudeRuntimeStatus,
     codexSubscription,
     staleSessionReaper: createTeamRunStaleSessionReaper({ sessionManager }),
   });
