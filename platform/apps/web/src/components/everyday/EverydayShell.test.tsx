@@ -172,7 +172,11 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(room).queryByText(/node -e/i)).not.toBeInTheDocument();
     expect(within(room).queryByText(/ipop_homepage_clarity_receipt\.md/i)).not.toBeInTheDocument();
     expect(within(room).queryByText(/::team-event::/i)).not.toBeInTheDocument();
-    expect(within(room).getByText("started: Scout site read")).toBeInTheDocument();
+    // The coordinator's "started: Scout site read" telemetry becomes a named, first-person line — never raw.
+    expect(within(room).queryByText(/started:/i)).not.toBeInTheDocument();
+    expect(
+      within(room).getByText("I'm digging into your site and market to find the sharpest angle to lead with."),
+    ).toBeInTheDocument();
     expect(within(room).getAllByText(EVERYDAY.thread.internalToolActivity)).toHaveLength(4);
   });
 
