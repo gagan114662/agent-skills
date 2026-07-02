@@ -68,6 +68,23 @@ export interface DemoSandboxProps {
   fetchImpl?: FetchLike;
   /** Per-section reveal delay (ms). `<= 0` reveals everything at once — used by tests for instant runs. */
   revealDelayMs?: number;
+  /**
+   * Website to auto-build on mount. Defaults to the `?url=` query param. This is what makes the demo
+   * survive a submit that happens *before* React hydrates: the form has no `action`, so an early native
+   * submit reloads the page to `/demo?url=<site>` — reading that param here re-runs the build instead of
+   * leaving the visitor on a dead, empty form with no API call ever fired. Injectable for tests.
+   */
+  initialUrl?: string;
+}
+
+/** The `?url=` a native (pre-hydration) form submit leaves behind. Empty string when absent or non-browser. */
+function urlParamFromLocation(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return new URLSearchParams(window.location.search).get("url") ?? "";
+  } catch {
+    return "";
+  }
 }
 
 /** Default cadence: ~0.65s/section keeps a 6-section build around ~4s — visibly live, far inside ~60s. */
@@ -76,6 +93,7 @@ const DEFAULT_REVEAL_MS = 650;
 export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
   const { fetchImpl, revealDelayMs = DEFAULT_REVEAL_MS } = props;
   usePublicLightTheme();
+  const autoRanRef = useRef(false);
 
   const [input, setInput] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -120,6 +138,17 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
     },
     [fetchImpl],
   );
+
+  // Progressive enhancement: if we arrived with a `?url=` (a native form submit that fired before this
+  // component hydrated, or a shared/deep link), seed the field and build immediately — one time only.
+  useEffect(() => {
+    if (autoRanRef.current) return;
+    const seed = (props.initialUrl ?? urlParamFromLocation()).trim();
+    if (seed === "") return;
+    autoRanRef.current = true;
+    setInput(seed);
+    void build(seed);
+  }, [build, props.initialUrl]);
 
   // Paced reveal: once the plan lands, surface one section at a time so the build looks live. The whole
   // artifact is already in hand, so this is purely cosmetic — and instant when revealDelayMs <= 0 (tests).
