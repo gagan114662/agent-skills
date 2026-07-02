@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import type { IMessageStatusResponse } from "../../api/types.js";
 import { EVERYDAY } from "../../brand.js";
+import { customerVisibleAgentText } from "./everyday-agent-text.js";
 import { CopyButton } from "../CopyButton.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES } from "../../routing.js";
@@ -73,46 +74,7 @@ function AgentChip({ name }: { name: string }): React.JSX.Element {
   );
 }
 
-const INTERNAL_TOOL_COMMAND_RE =
-  /^(?:(?:\/usr\/bin\/|\/bin\/)?(?:sh|bash|zsh)\s+-lc\b|(?:sed|cat|awk|grep|rg|find|curl|gh|git|pnpm|npm|yarn|node|tsx|python3?|flyctl|vercel)\b)/i;
-const TEAM_EVENT_MARKER = "::team-event::";
 const STARTER_AGENT_SEAT_LIMIT = 5;
-
-function firstCustomerVisibleLine(text: string): string {
-  return (
-    text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line !== "" && !line.startsWith(String.fromCharCode(96).repeat(3)))[0] ?? ""
-  );
-}
-
-function looksLikeInternalToolActivity(text: string): boolean {
-  const firstLine = firstCustomerVisibleLine(text)
-    .replace(/^\$\s*/, "")
-    .replace(/^🔧\s*/, "")
-    .replace(/^tool\s*:\s*/i, "");
-  return (
-    INTERNAL_TOOL_COMMAND_RE.test(firstLine) ||
-    /^(?:script completed|wall time|output:|script error:)/i.test(firstLine)
-  );
-}
-
-function teamEventSummary(text: string): string | null {
-  if (!text.startsWith(TEAM_EVENT_MARKER)) return null;
-  try {
-    const raw = JSON.parse(text.slice(TEAM_EVENT_MARKER.length).trim()) as Record<string, unknown>;
-    return typeof raw.summary === "string" && raw.summary.trim() ? raw.summary.trim() : null;
-  } catch {
-    return null;
-  }
-}
-
-function customerVisibleAgentText(text: string): string {
-  const eventSummary = teamEventSummary(text);
-  if (eventSummary) return eventSummary;
-  return looksLikeInternalToolActivity(text) ? EVERYDAY.thread.internalToolActivity : text;
-}
 
 /** The north star: customers + revenue, the only scoreboard that matters. */
 function NorthStarBar({ data }: { data: NorthStar }): React.JSX.Element {

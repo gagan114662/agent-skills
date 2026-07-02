@@ -134,6 +134,48 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.queryByText(/ipop-dana-northwind-trial/i)).not.toBeInTheDocument();
   });
 
+  it("never shows raw team-event JSON or codex runtime logs in the room", async () => {
+    const { store } = renderWithStore(<LiveEverydayShell />, {
+      messages: [
+        makeMessage({
+          id: "m-human",
+          authorMemberId: "ag1",
+          body: "Found a broken CTA on your pricing page — want me to draft a fix?",
+        }),
+        makeMessage({
+          id: "m-log",
+          authorMemberId: "ag1",
+          body: "2026-07-01T12:00:00.000Z ERROR codex_core::shell_snapshot: failed to capture output",
+        }),
+        makeMessage({
+          id: "m-bad-event",
+          authorMemberId: "ag1",
+          // A truncated team-event blob: must never leak teamRunId / branch as raw text.
+          body: '::team-event:: {"teamRunId":"tr-secret","agentMemberId":"ag1","branch":"scout/leak"',
+        }),
+        makeMessage({
+          id: "m-good-event",
+          authorMemberId: "ag1",
+          body: '::team-event:: {"teamRunId":"tr1","subtaskId":"s1","agentMemberId":"ag1","kind":"started","summary":"reading your homepage","branch":"scout/read","createdAt":"2026-07-01T00:00:00.000Z"}',
+        }),
+      ],
+      approvals: [],
+    });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    const room = await screen.findByRole("region", { name: EVERYDAY.room.heading });
+    // The friendly parsed line renders; the raw internals never do.
+    expect(await within(room).findByText("reading your homepage")).toBeInTheDocument();
+    expect(within(room).getByText(/broken CTA on your pricing page/i)).toBeInTheDocument();
+    expect(within(room).queryByText(/::team-event::/)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/tr-secret/)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/scout\/leak/)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/codex_core::shell_snapshot/)).not.toBeInTheDocument();
+  });
+
   it("uses honest empty states when the workspace has no live work yet", async () => {
     const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
 
