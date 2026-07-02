@@ -40,22 +40,28 @@ const silentLogger: SessionLogger = {
   error: () => {},
 };
 
+function teamEventField(task: string, field: "subtaskId" | "branch"): string | null {
+  const match = new RegExp('"' + field + '": "([^"]+)"').exec(task);
+  return match?.[1] ?? null;
+}
+
 const fakeLauncher = {
   launch: vi.fn(async (input: LaunchInput) => {
     teamLaunches.push(input);
     const taskText = input.task.toLowerCase();
     if (input.teamRunId && taskText.includes("research artifact ready: <domain or target>")) {
+      const subtaskId = teamEventField(input.task, "subtaskId") ?? "scout";
       await channelPoster.post({
         workspaceId: input.workspaceId,
         channelId: input.channelId,
         agentMemberId: input.agentMemberId,
         body: encodeTeamEvent({
           teamRunId: input.teamRunId,
-          subtaskId: "scout",
+          subtaskId,
           agentMemberId: input.agentMemberId,
           kind: "milestone",
           summary: "research artifact ready: ipop.ai",
-          branch: null,
+          branch: teamEventField(input.task, "branch"),
           artifact: {
             kind: "scout_research",
             schemaVersion: 1,
@@ -72,17 +78,18 @@ const fakeLauncher = {
       });
     }
     if (input.teamRunId && taskText.includes("produce the required draft_set artifact")) {
+      const subtaskId = teamEventField(input.task, "subtaskId") ?? "quill";
       await channelPoster.post({
         workspaceId: input.workspaceId,
         channelId: input.channelId,
         agentMemberId: input.agentMemberId,
         body: encodeTeamEvent({
           teamRunId: input.teamRunId,
-          subtaskId: "quill",
+          subtaskId,
           agentMemberId: input.agentMemberId,
           kind: "milestone",
           summary: "draft set ready: ipop.ai",
-          branch: null,
+          branch: teamEventField(input.task, "branch"),
           artifact: {
             kind: "draft_set",
             schemaVersion: 1,

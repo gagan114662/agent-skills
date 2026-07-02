@@ -359,6 +359,8 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     });
 
     expect(launcher.launched[0]?.task).toContain("draft_set");
+    expect(launcher.launched[0]?.task).toContain('"teamRunId": "run_1"');
+    expect(launcher.launched[0]?.task).toContain('"subtaskId": "quill"');
     expect(launcher.launched[0]?.task).toContain("google_rsa");
     expect(launcher.launched[0]?.task).toContain("subject <=45");
     expect(launcher.launched[0]?.task).toContain("draft channel-native assets");
