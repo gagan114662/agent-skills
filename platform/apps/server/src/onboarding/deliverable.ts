@@ -1,7 +1,11 @@
 import {
+  defaultPublicWebFetch,
   defaultPublicWebHostResolver,
+  fetchPinnedPublicWebUrl,
   isBlockedPublicHostnameLiteral,
+  readPublicWebResponseText,
   validatePublicWebUrl,
+  type PublicWebFetch,
   type HostResolver,
 } from "../security/public-web-url.js";
 
@@ -105,7 +109,12 @@ export function deriveBusiness(raw: unknown): DeliverableBusiness | null {
 
 /** Title-case the host's first label into a brand name, stripping anything not letter/number/space/hyphen. */
 export function brandNameFromHost(host: string): string {
-  const label = host.split(".")[0]?.replace(/[^a-z0-9- ]/gi, "").replace(/-+/g, " ").trim() ?? "";
+  const label =
+    host
+      .split(".")[0]
+      ?.replace(/[^a-z0-9- ]/gi, "")
+      .replace(/-+/g, " ")
+      .trim() ?? "";
   if (label === "") return "";
   const titled = label
     .split(/\s+/)
@@ -116,7 +125,7 @@ export function brandNameFromHost(host: string): string {
 
 export async function readSiteSnapshot(
   business: DeliverableBusiness,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: PublicWebFetch = defaultPublicWebFetch,
   resolver: HostResolver = defaultPublicWebHostResolver,
 ): Promise<SiteSnapshot | null> {
   const primary = business.url;
@@ -128,46 +137,69 @@ export async function readSiteSnapshot(
   return null;
 }
 
-async function fetchSnapshotUrl(url: string, fetchImpl: typeof fetch, resolver: HostResolver): Promise<SiteSnapshot | null> {
+async function fetchSnapshotUrl(
+  url: string,
+  fetchImpl: PublicWebFetch,
+  resolver: HostResolver,
+): Promise<SiteSnapshot | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let closeResponse: (() => Promise<void>) | undefined;
   try {
     let current = await validatePublicWebUrl(url, resolver);
     if (!current) return null;
     let res: Response | null = null;
     for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
-      res = await fetchImpl(current.href, {
-        method: "GET",
-        redirect: "manual",
-        signal: controller.signal,
-        headers: {
-          Accept: "text/html,application/xhtml+xml",
-          "User-Agent": "ipop-onboarding-site-reader/1.0",
+      const fetched = await fetchPinnedPublicWebUrl(
+        current,
+        {
+          method: "GET",
+          redirect: "manual",
+          signal: controller.signal,
+          headers: {
+            Accept: "text/html,application/xhtml+xml",
+            "User-Agent": "ipop-onboarding-site-reader/1.0",
+          },
         },
-      });
+        fetchImpl,
+      );
+      res = fetched.response;
+      closeResponse = fetched.close;
       if (res.status < 300 || res.status > 399) break;
       const location = res.headers.get("location");
       if (!location || redirectCount === MAX_REDIRECTS) return null;
-      const next = await validatePublicWebUrl(location, resolver, current);
+      const next = await validatePublicWebUrl(location, resolver, current.url);
+      await closeResponse();
+      closeResponse = undefined;
       if (!next) return null;
       current = next;
     }
     if (!res) return null;
     const contentType = res.headers.get("content-type") ?? "";
-    const sourceUrl = res.url || current.href;
+    const sourceUrl = res.url || current.url.href;
     if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) {
       return res.ok ? null : httpStatusSnapshot(sourceUrl, res.status);
     }
-    const html = (await res.text().catch(() => "")).slice(0, MAX_HTML_BYTES);
-    return parseSiteSnapshot(sourceUrl, res.status, html) ?? (res.ok ? null : httpStatusSnapshot(sourceUrl, res.status));
+    if (!res.ok) return httpStatusSnapshot(sourceUrl, res.status);
+    const html = await readPublicWebResponseText(res, MAX_HTML_BYTES);
+    if (html === null) return null;
+    return (
+      parseSiteSnapshot(sourceUrl, res.status, html) ??
+      (res.ok ? null : httpStatusSnapshot(sourceUrl, res.status))
+    );
   } catch {
     return null;
   } finally {
     clearTimeout(timer);
+    await closeResponse?.().catch(() => undefined);
   }
 }
 
-export function parseSiteSnapshot(sourceUrl: string, status: number, html: string): SiteSnapshot | null {
+export function parseSiteSnapshot(
+  sourceUrl: string,
+  status: number,
+  html: string,
+): SiteSnapshot | null {
   const title = extractTitle(html);
   const description = extractMetaDescription(html);
   const h1 = extractFirstHeading(html, "h1");
@@ -239,10 +271,7 @@ function replaceControlChars(text: string): string {
 }
 
 function cleanText(text: string, max = MAX_TEXT_CHARS): string {
-  return replaceControlChars(decodeEntities(text))
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max);
+  return replaceControlChars(decodeEntities(text)).replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 function sanitizeUrl(url: string): string {
@@ -283,7 +312,10 @@ function extractCtas(html: string): string[] {
   while ((match = re.exec(html)) && out.length < MAX_CTA_COUNT) {
     const text = cleanText(stripHtml(match[2] ?? ""), 60);
     if (!text || text.length < 3 || text.length > 60) continue;
-    if (!/\b(start|try|book|get|join|demo|contact|buy|learn|sign|talk|request|download)\b/i.test(text)) continue;
+    if (
+      !/\b(start|try|book|get|join|demo|contact|buy|learn|sign|talk|request|download)\b/i.test(text)
+    )
+      continue;
     const key = text.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -293,11 +325,29 @@ function extractCtas(html: string): string[] {
 }
 
 function extractKeywords(text: string): string[] {
-  const stop = new Set(["the", "and", "for", "with", "your", "you", "that", "this", "from", "into", "are", "our", "their"]);
+  const stop = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "your",
+    "you",
+    "that",
+    "this",
+    "from",
+    "into",
+    "are",
+    "our",
+    "their",
+  ]);
   const words = cleanText(text, 800)
     .toLowerCase()
     .split(/[^\p{L}\p{N}\p{M}]+/u)
-    .filter((word) => (/\p{Script=Han}/u.test(word) ? Array.from(word).length >= 2 : word.length > 3) && !stop.has(word));
+    .filter(
+      (word) =>
+        (/\p{Script=Han}/u.test(word) ? Array.from(word).length >= 2 : word.length > 3) &&
+        !stop.has(word),
+    );
   const counts = new Map<string, number>();
   for (const word of words) counts.set(word, (counts.get(word) ?? 0) + 1);
   return [...counts.entries()]
@@ -318,14 +368,20 @@ export async function buildDeliverableForBusiness(
  * Build the personalized deliverable for a business from facts we actually read from its public site.
  * Deterministic for a given `{business, snapshot}` pair; never fabricates crawled details.
  */
-export function buildDeliverable(business: DeliverableBusiness, snapshot: SiteSnapshot): DeliverablePlan {
+export function buildDeliverable(
+  business: DeliverableBusiness,
+  snapshot: SiteSnapshot,
+): DeliverablePlan {
   const { name, host } = business;
   const pageTitle = snapshot.title ?? snapshot.h1 ?? name;
   const hero = snapshot.h1 ?? snapshot.title ?? `${name}'s homepage`;
-  const description = snapshot.description ?? "No meta description was visible in the homepage HTML we read.";
+  const description =
+    snapshot.description ?? "No meta description was visible in the homepage HTML we read.";
   const primaryCta = snapshot.ctas[0] ?? "No clear primary CTA found";
-  const ctaLine = snapshot.ctas.length > 0 ? snapshot.ctas.join(", ") : "no obvious action buttons or links";
-  const keywordLine = snapshot.keywords.length > 0 ? snapshot.keywords.join(", ") : `${name.toLowerCase()}, ${host}`;
+  const ctaLine =
+    snapshot.ctas.length > 0 ? snapshot.ctas.join(", ") : "no obvious action buttons or links";
+  const keywordLine =
+    snapshot.keywords.length > 0 ? snapshot.keywords.join(", ") : `${name.toLowerCase()}, ${host}`;
   return {
     business,
     siteRead: snapshot,
@@ -399,7 +455,15 @@ export function buildDeliverable(business: DeliverableBusiness, snapshot: SiteSn
 
 /** A single streamable frame: the header, one section, or the terminal marker. */
 export type DeliverableFrame =
-  | { event: "start"; data: { business: DeliverableBusiness; title: string; subtitle: string; sectionCount: number } }
+  | {
+      event: "start";
+      data: {
+        business: DeliverableBusiness;
+        title: string;
+        subtitle: string;
+        sectionCount: number;
+      };
+    }
   | { event: "section"; data: DeliverableSection & { index: number } }
   | { event: "done"; data: { sectionCount: number } };
 

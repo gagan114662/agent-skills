@@ -18,9 +18,14 @@
 
 import { DEFAULT_PUBLIC_APP_ORIGIN } from "../../product-origins.js";
 import {
+  defaultPublicWebFetch,
   defaultPublicWebHostResolver,
+  fetchPinnedPublicWebUrl,
+  readPublicWebResponseText,
   validatePublicWebUrl,
   type HostResolver,
+  type PublicWebFetch,
+  type ValidatedPublicWebUrl,
 } from "../../security/public-web-url.js";
 import { type FetchedPage, MAX_PAGES, MAX_URL_CHARS } from "./distill.js";
 
@@ -55,8 +60,8 @@ export class DryRunSiteReaderProvider implements SiteReaderProvider {
 
 /**
  * The real provider: fetches the seed page, discovers a bounded set of same-origin links, and GETs each.
- * Dependency-free (global `fetch`). Defensive throughout — any single failed/oversized/cross-origin page
- * is skipped, never fatal, so a briefed launch degrades to "fewer facts," never to an error.
+ * Defensive throughout — any single failed/oversized/cross-origin page is skipped, never fatal, so a briefed
+ * launch degrades to "fewer facts," never to an error.
  */
 export class LiveSiteReaderProvider implements SiteReaderProvider {
   readonly kind = "live" as const;
@@ -65,6 +70,7 @@ export class LiveSiteReaderProvider implements SiteReaderProvider {
     private readonly timeoutMs: number = FETCH_TIMEOUT_MS,
     private readonly maxPages: number = MAX_PAGES,
     private readonly resolver: HostResolver = defaultPublicWebHostResolver,
+    private readonly fetchImpl: PublicWebFetch = defaultPublicWebFetch,
   ) {}
 
   async fetchPages(seedUrl: string, onLog?: (line: string) => void): Promise<FetchedPage[]> {
@@ -74,23 +80,23 @@ export class LiveSiteReaderProvider implements SiteReaderProvider {
       return [];
     }
     const pages: FetchedPage[] = [];
-    const home = await this.get(seed.href, onLog);
+    const home = await this.get(seed.url.href, onLog);
     if (home) pages.push(home);
 
     // Discover a bounded set of same-origin links from the homepage; cross-origin links are dropped.
-    const linkBase = home ? new URL(home.url) : seed;
+    const linkBase = home ? new URL(home.url) : seed.url;
     const links = home ? this.sameOriginLinks(home.html, linkBase) : [];
     for (const link of links) {
       if (pages.length >= this.maxPages) break;
       const p = await this.get(link, onLog);
       if (p) pages.push(p);
     }
-    onLog?.(`▸ [live] crawled ${pages.length} page(s) from ${seed.origin} (read-only)`);
+    onLog?.(`▸ [live] crawled ${pages.length} page(s) from ${seed.url.origin} (read-only)`);
     return pages;
   }
 
   /** Parse + validate the seed: http(s) only. Returns the URL or null (the caller refuses to crawl). */
-  private async parseSeed(seedUrl: string): Promise<URL | null> {
+  private async parseSeed(seedUrl: string): Promise<ValidatedPublicWebUrl | null> {
     return validatePublicWebUrl(seedUrl, this.resolver);
   }
 
@@ -98,32 +104,46 @@ export class LiveSiteReaderProvider implements SiteReaderProvider {
   private async get(url: string, onLog?: (line: string) => void): Promise<FetchedPage | null> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let closeResponse: (() => Promise<void>) | undefined;
     try {
       let current = await validatePublicWebUrl(url, this.resolver);
       if (!current) return null;
       let res: Response | null = null;
       for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
-        res = await fetch(current.href, {
-          method: "GET",
-          redirect: "manual",
-          signal: controller.signal,
-          headers: { Accept: "text/html", "User-Agent": "ipop-site-reader/1.0 (+" + DEFAULT_PUBLIC_APP_ORIGIN + ")" },
-        });
+        const fetched = await fetchPinnedPublicWebUrl(
+          current,
+          {
+            method: "GET",
+            redirect: "manual",
+            signal: controller.signal,
+            headers: {
+              Accept: "text/html",
+              "User-Agent": "ipop-site-reader/1.0 (+" + DEFAULT_PUBLIC_APP_ORIGIN + ")",
+            },
+          },
+          this.fetchImpl,
+        );
+        res = fetched.response;
+        closeResponse = fetched.close;
         if (res.status < 300 || res.status > 399) break;
         const location = res.headers.get("location");
         if (!location || redirectCount === MAX_REDIRECTS) return null;
-        const next = await validatePublicWebUrl(location, this.resolver, current);
+        const next = await validatePublicWebUrl(location, this.resolver, current.url);
+        await closeResponse();
+        closeResponse = undefined;
         if (!next) return null;
         current = next;
       }
       if (!res) return null;
-      const body = (await res.text().catch(() => "")).slice(0, MAX_PAGE_BYTES);
-      return { url: current.href.slice(0, MAX_URL_CHARS), status: res.status, html: body };
+      const body = await readPublicWebResponseText(res, MAX_PAGE_BYTES);
+      if (body === null) return null;
+      return { url: current.url.href.slice(0, MAX_URL_CHARS), status: res.status, html: body };
     } catch (err) {
       onLog?.("[live] skip " + url + ": " + (err instanceof Error ? err.message : String(err)));
       return null;
     } finally {
       clearTimeout(timer);
+      await closeResponse?.().catch(() => undefined);
     }
   }
 
