@@ -383,6 +383,56 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     );
   });
 
+  it("surfaces runtime spawn failures as a blocked team lane instead of eternal working (#1536)", async () => {
+    const launcher = new FakeLauncher(() => true);
+    const { channel, events } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "scout",
+          agentMemberId: "mem_scout",
+          task: "I couldn't start up — my runtime is missing a tool I need",
+          branch: "b-scout",
+        },
+      ],
+    });
+    const timeline = await coordinator.timeline("ch_1", "run_1", {
+      nowMs: Date.UTC(2026, 5, 8, 0, 10, 0),
+      stuckAfterMs: 60_000,
+    });
+
+    expect(result.results[0]).toMatchObject({
+      subtaskId: "scout",
+      ok: false,
+      error: expect.stringContaining("runtime is missing a tool"),
+    });
+    expect(events().find((event) => event.kind === "blocked")?.summary).toBe(
+      "blocked: I couldn't start up — my runtime is missing a tool I need",
+    );
+    expect(timeline.state).toBe("failed");
+    expect(timeline.subtasks[0]).toMatchObject({
+      state: "failed",
+      reason: "I couldn't start up — my runtime is missing a tool I need",
+    });
+    expect(timeline.alerts).toContainEqual(
+      expect.objectContaining({
+        kind: "dead_run",
+        subtaskId: "scout",
+        state: "failed",
+        reason: "I couldn't start up — my runtime is missing a tool I need",
+      }),
+    );
+  });
+
   it("injects validated Scout research into downstream writer tasks (#1540)", async () => {
     const launcher = new FakeLauncher();
     const { channel } = makeChannel();

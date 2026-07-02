@@ -229,7 +229,14 @@ function timelineCounts(subtasks: readonly TeamRunTimelineSubtask[]): Record<Tea
 }
 
 function blockSummary(error: string): string {
+  if (looksLikeRuntimeStartupFailure(error)) {
+    return "blocked: I couldn't start up — my runtime is missing a tool I need";
+  }
   return /^blocked:/i.test(error) ? error : "blocked: " + error;
+}
+
+function looksLikeRuntimeStartupFailure(error: string): boolean {
+  return /\b(?:could(?: not|n't) start up|runtime is missing a tool|failed to spawn|spawn(?:ed)? failed|enoent)\b/i.test(error);
 }
 
 function compactArtifactText(value: string, fallback: string): string {
