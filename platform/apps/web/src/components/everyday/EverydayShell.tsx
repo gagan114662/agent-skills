@@ -22,6 +22,7 @@ import { customerVisibleAgentText } from "./everyday-agent-text.js";
 import { CopyButton } from "../CopyButton.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES } from "../../routing.js";
+import { EVERYDAY_INTERNAL_ENABLED } from "./everyday-shell-flag.js";
 import {
   type ApprovalCard,
   type Deliverable,
@@ -842,10 +843,13 @@ function WorkSummary({
   data,
   onConnectorConnect,
   showCmoSummary,
+  internal = false,
 }: {
   data: EverydayData;
   onConnectorConnect?: (id: string) => void;
   showCmoSummary: boolean;
+  /** #1533: render the internal build receipt behind each number. Default off = customer view. */
+  internal?: boolean;
 }): React.JSX.Element {
   const d = EVERYDAY.dashboard;
   const brief = data.marketingBrief ?? fallbackMarketingBrief(data);
@@ -871,11 +875,11 @@ function WorkSummary({
             <p className="everyday-eyebrow">{d.executive}</p>
             <ol>
               {brief.executiveSummary.map((signal) => (
-                <li key={signal.label} data-tone={signal.tone}>
+                <li key={signal.label} data-tone={signal.tone} title={signal.detail}>
                   <span>{signal.label}</span>
                   <strong>{signal.value}</strong>
                   <em>{signal.detail}</em>
-                  <b>{signal.proof}</b>
+                  {internal && <b>{signal.proof}</b>}
                 </li>
               ))}
             </ol>
@@ -887,7 +891,7 @@ function WorkSummary({
                 <li key={change.title}>
                   <strong>{change.title}</strong>
                   <span>{change.owner}</span>
-                  <em>{change.proof}</em>
+                  {internal && <em>{change.proof}</em>}
                 </li>
               ))}
             </ul>
@@ -901,14 +905,14 @@ function WorkSummary({
         </div>
         <ol className="everyday-dashboard__metrics" aria-label={d.heading + " metrics"}>
           {brief.metrics.map((metric) => (
-            <li key={metric.label} className="everyday-dashboard__metric">
-              <small data-proof-kind={metric.proofKind} title={metric.proof}>
+            <li key={metric.label} className="everyday-dashboard__metric" title={metric.label + ": " + metric.detail}>
+              <small data-proof-kind={metric.proofKind} title={proofKindTitle(metric.proofKind)}>
                 {proofKindLabel(metric.proofKind)}
               </small>
               <strong>{metric.value}</strong>
               <span>{metric.label}</span>
               <em data-tone={metric.tone}>{metric.detail}</em>
-              <b>{metric.proof}</b>
+              {internal && <b>{metric.proof}</b>}
             </li>
           ))}
         </ol>
@@ -917,11 +921,11 @@ function WorkSummary({
         <p className="everyday-eyebrow">{d.rankedWork}</p>
         <ol>
           {brief.rankedWork.map((item) => (
-            <li key={item.agent + item.work} data-status={item.status}>
+            <li key={item.agent + item.work} data-status={item.status} title={item.impact}>
               <span>{item.agent}</span>
               <strong>{item.work}</strong>
               <em>{item.impact}</em>
-              <b>{item.proof}</b>
+              {internal && <b>{item.proof}</b>}
             </li>
           ))}
         </ol>
@@ -930,11 +934,11 @@ function WorkSummary({
         <p className="everyday-eyebrow">{d.capacity}</p>
         <ol>
           {brief.capacity.map((item) => (
-            <li key={item.label} data-tone={item.tone}>
+            <li key={item.label} data-tone={item.tone} title={item.detail}>
               <span>{item.label}</span>
               <strong>{item.value}</strong>
               <em>{item.detail}</em>
-              <b>{item.proof}</b>
+              {internal && <b>{item.proof}</b>}
             </li>
           ))}
         </ol>
@@ -953,12 +957,14 @@ function WorkSummary({
         )}
       </div>
       <div className="everyday-dashboard__readiness">
-        <p className="everyday-eyebrow">launch readiness</p>
+        <p className="everyday-eyebrow">{d.readiness}</p>
         <ol className="everyday-dashboard__readiness-list">
           {brief.readiness.map((item) => (
-            <li key={item.label} data-status={item.status}>
-              <span>{item.label}</span>
-              <strong>{item.status}</strong>
+            <li key={item.label} data-status={item.status} title={readinessHelp(item.label)}>
+              <span>{readinessLabel(item.label)}</span>
+              <strong>{readinessStatusLabel(item.status)}</strong>
+              {/* #1533: the reason (proof) is the actionable part of a setup checklist, so it stays visible to
+                  the customer; only the engineering LABEL and raw status word are translated into plain words. */}
               <em>{item.proof}</em>
             </li>
           ))}
@@ -1069,6 +1075,72 @@ function proofKindLabel(kind: MarketingBrief["metrics"][number]["proofKind"]): s
       return "sample";
     case "live":
       return "live";
+  }
+}
+
+/** #1533: plain-language hover explaining what the live/sample/external honesty chip means to a new customer. */
+function proofKindTitle(kind: MarketingBrief["metrics"][number]["proofKind"]): string {
+  switch (kind) {
+    case "external":
+      return "Confirmed out in the real world (a real send, signup, or published page).";
+    case "sample":
+      return "An example so you can see the layout — not a number from your workspace yet.";
+    case "live":
+      return "A real number from your own workspace right now.";
+    default:
+      return "";
+  }
+}
+
+/** #1533: readiness rows use engineering labels; a customer needs plain words for each setup step. */
+function readinessLabel(label: MarketingBrief["readiness"][number]["label"]): string {
+  switch (label) {
+    case "auth":
+      return "Sign-in";
+    case "connectors":
+      return "Connected channels";
+    case "first run":
+      return "First result";
+    case "outbound":
+      return "Sending";
+    case "billing":
+      return "Plan & billing";
+    case "observability":
+      return "Activity tracking";
+    case "legal/trust":
+      return "Privacy & trust";
+  }
+}
+
+/** #1533: one-sentence, jargon-free explanation of each readiness step, shown to customers in place of the proof. */
+function readinessHelp(label: MarketingBrief["readiness"][number]["label"]): string {
+  switch (label) {
+    case "auth":
+      return "You're signed in, so the team can work in your workspace.";
+    case "connectors":
+      return "Connect a channel (like email) before the team can reach anyone.";
+    case "first run":
+      return "The team's first useful result for you.";
+    case "outbound":
+      return "Nothing goes out until a real channel is connected and you approve it.";
+    case "billing":
+      return "Your plan and its limits.";
+    case "observability":
+      return "A running log of what the team does, so nothing is hidden.";
+    case "legal/trust":
+      return "The rules that keep your data and outreach safe.";
+  }
+}
+
+/** #1533: plain status words instead of the raw ready/blocked/pending state names. */
+function readinessStatusLabel(status: MarketingBrief["readiness"][number]["status"]): string {
+  switch (status) {
+    case "ready":
+      return "ready";
+    case "blocked":
+      return "needs setup";
+    case "pending":
+      return "coming up";
   }
 }
 
@@ -1704,6 +1776,7 @@ export function EverydayShell({
   dashboardOnly = false,
   theme = "workspace",
   showCmoSummary = CMO_SUMMARY_ENABLED,
+  internal = EVERYDAY_INTERNAL_ENABLED,
 }: {
   data?: EverydayData;
   hour?: number;
@@ -1722,6 +1795,11 @@ export function EverydayShell({
   theme?: EverydayShellTheme;
   /** Show the <10s CMO summary strip (#1456). Default follows the default-OFF owner-first flag. */
   showCmoSummary?: boolean;
+  /**
+   * #1533: show the internal build receipts behind each metric. DEFAULT-OFF (customer view). Defaults to the
+   * `VITE_EVERYDAY_INTERNAL` flag; tests and internal surfaces can force it on/off explicitly.
+   */
+  internal?: boolean;
 }): React.JSX.Element {
   const [shipped, setShipped] = useState<readonly string[]>([]);
   const [statuses, setStatuses] = useState<Record<string, EverydayDecisionStatus>>({});
@@ -1830,6 +1908,7 @@ export function EverydayShell({
             data={{ ...data, room, thread, approvals: pending }}
             onConnectorConnect={onConnectorConnect}
             showCmoSummary={showCmoSummary}
+            internal={internal}
           />
         )}
         {!dashboardOnly && (
@@ -1848,6 +1927,7 @@ export function EverydayShell({
                 data={{ ...data, room, thread, approvals: pending }}
                 onConnectorConnect={onConnectorConnect}
                 showCmoSummary={showCmoSummary}
+                internal={internal}
               />
             )}
             <ConnectorSetup

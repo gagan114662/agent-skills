@@ -1826,6 +1826,7 @@ export const EVERYDAY = {
     subhead: "what changed, what needs review, which channels are connected, and what happens next.",
     sample: "sample readout",
     live: "live workspace",
+    readiness: "setup checklist",
     executive: "today at a glance",
     rankedWork: "work that matters",
     goalTarget: "target",

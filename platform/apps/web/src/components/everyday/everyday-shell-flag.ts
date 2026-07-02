@@ -29,6 +29,23 @@ export const EVERYDAY_SHELL_OWNER_WORKSPACE_ID: string | undefined = readEnv(
   env.VITE_EVERYDAY_SHELL_OWNER_WORKSPACE_ID,
 );
 
+/**
+ * Internal-view flag (#1533) — `VITE_EVERYDAY_INTERNAL`. DEFAULT-OFF, opt-in: only "true"/"1" turns it on.
+ *
+ * The everyday dashboard is a customer surface. Its build receipts ("first-run receipt persisted", "no
+ * external transparency receipt created", "no provider receipt connected") are honest internal proof, but
+ * they read as insider jargon to a customer who has never seen ipop. This flag decides whether those internal
+ * proof/receipt lines are rendered: OFF (the customer default) shows the plain metric + its one-sentence
+ * explanation; ON (an internal / dogfooding session) also shows the underlying proof receipt behind each number.
+ *
+ * It does NOT hide the live/sample/external honesty chip — that label protects the customer from mistaking
+ * sample traction for live results, so it stays visible in both modes.
+ */
+export const EVERYDAY_INTERNAL_ENABLED: boolean = (() => {
+  const raw = readEnv(env.VITE_EVERYDAY_INTERNAL);
+  return raw === "true" || raw === "1";
+})();
+
 export interface EverydayShellGateInput {
   /** The master flag (default ON). */
   readonly flagOn: boolean;

@@ -134,6 +134,24 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.queryByText(/ipop-dana-northwind-trial/i)).not.toBeInTheDocument();
   });
 
+  it("#1531: does not re-fetch the pending approval queue on mount — bootstrap already loaded it", async () => {
+    const { store, deps } = renderWithStore(<LiveEverydayShell />, {
+      messages: [],
+      approvals: [approval()],
+    });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+    // Wait until the shell has mounted and its boot effect has had a chance to (not) re-fetch.
+    expect((await screen.findAllByText("Send follow-up to Morgan")).length).toBeGreaterThan(0);
+
+    const listSpy = deps.api.approvals.list as unknown as { mock: { calls: readonly unknown[][] } };
+    const pendingFetches = listSpy.mock.calls.filter((call) => call[1] === "pending");
+    // Boot must hit `/approvals?status=pending` exactly once (bootstrap's refreshPending), not twice.
+    expect(pendingFetches.length).toBe(1);
+  });
+
   it("never shows raw team-event JSON or codex runtime logs in the room", async () => {
     const { store } = renderWithStore(<LiveEverydayShell />, {
       messages: [
@@ -212,7 +230,7 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(
       await screen.findByText("Codex subscription auth is not connected for this workspace yet."),
     ).toBeInTheDocument();
-    expect(screen.getByText("auth").closest("li")).toHaveAttribute("data-status", "blocked");
+    expect(screen.getByText("Sign-in").closest("li")).toHaveAttribute("data-status", "blocked");
   });
 
   it("projects current-channel live marketing agents into the signed-in room data", () => {
@@ -1317,8 +1335,8 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.getByText(EVERYDAY.dashboard.rankedWork)).toBeInTheDocument();
     expect(screen.getByText("first useful marketing result")).toBeInTheDocument();
     expect(screen.getByText("turned a live source read into one owner-reviewable direction")).toBeInTheDocument();
-    expect(screen.getByText("external send path")).toBeInTheDocument();
-    expect(screen.getByText("blocked until one connector produces a real sent-message receipt")).toBeInTheDocument();
+    expect(screen.getByText("reaching people outside ipop")).toBeInTheDocument();
+    expect(screen.getByText("waiting on one connected channel before anything can be sent")).toBeInTheDocument();
   });
 
   it("flushes the public first-run handoff once signed in, then clears browser state (#1289)", async () => {

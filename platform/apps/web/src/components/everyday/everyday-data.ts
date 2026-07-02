@@ -299,7 +299,7 @@ export function emptyEverydayData(memberName: string = "there"): EverydayData {
       ],
       funnel: [
         { label: "audience read", count: "0", detail: "no site/source crawl receipt", tone: "bad" },
-        { label: "ICP ranked", count: "0", detail: "no scored segment list", tone: "bad" },
+        { label: "best-fit customers ranked", count: "0", detail: "no shortlist of who to reach yet", tone: "bad" },
         { label: "messages drafted", count: "0", detail: "waiting on a brief", tone: "neutral" },
         { label: "sent", count: "0", detail: "approval-gated until a real channel exists", tone: "bad" },
         { label: "won", count: "0", detail: "no customer proof", tone: "bad" },
