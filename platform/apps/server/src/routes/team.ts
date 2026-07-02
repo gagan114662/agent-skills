@@ -332,11 +332,13 @@ const disconnectedClaudeRuntime: RuntimeStatusProvider = {
       connected: false,
       reason:
         "Claude is not connected for this workspace yet. Connect a Claude subscription in " +
-        "Settings → Connect Claude, or set ANTHROPIC_API_KEY in the server environment.",
+        "Settings → Connect Claude, or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) " +
+        "in the server environment.",
       selectedHarness: "claude-code",
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "missing",
+      authMode: null,
       fallback: "none",
       apiKeySatisfies: false,
     };

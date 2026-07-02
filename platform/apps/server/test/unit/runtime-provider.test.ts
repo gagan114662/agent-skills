@@ -33,38 +33,44 @@ describe("runtime provider selection (#1568 — Claude default, Codex pluggable)
   });
 });
 
-describe("claude runtime status (#1568)", () => {
-  const deps = (subscription: boolean, apiKey: boolean) => ({
-    hasWorkspaceSubscription: async () => subscription,
-    hasEnvApiKey: () => apiKey,
+describe("claude runtime status (#1568 — subscription primary, api-key fallback)", () => {
+  const deps = (mode: "subscription" | "api_key" | "none") => ({
+    resolveAuthMode: async () => mode,
   });
 
-  it("is connected via the workspace subscription first (per-tenant billing wins)", async () => {
-    const status = await createClaudeRuntimeStatusProvider(deps(true, true)).status("w1", "m1");
+  it("reports authMode subscription when a Claude subscription token authenticates the run", async () => {
+    const status = await createClaudeRuntimeStatusProvider(deps("subscription")).status("w1", "m1");
     expect(status).toMatchObject({
       provider: "claude",
       connected: true,
       selectedHarness: "claude-code",
       runtimeAuth: "signed_in_subscription",
+      authMode: "subscription",
       apiKeySatisfies: false,
       fallback: "none",
     });
   });
 
-  it("is connected via the deployment env ANTHROPIC_API_KEY when no subscription is on file", async () => {
-    const status = await createClaudeRuntimeStatusProvider(deps(false, true)).status("w1", "m1");
+  it("reports authMode api_key when only the optional ANTHROPIC_API_KEY fallback exists", async () => {
+    const status = await createClaudeRuntimeStatusProvider(deps("api_key")).status("w1", "m1");
     expect(status).toMatchObject({
       connected: true,
       runtimeAuth: "api_key",
+      authMode: "api_key",
       apiKeySatisfies: true,
     });
-    expect(status.reason).toContain("Anthropic API key");
+    expect(status.reason).toContain("fallback");
   });
 
-  it("is disconnected with an owner-actionable reason when neither credential exists", async () => {
-    const status = await createClaudeRuntimeStatusProvider(deps(false, false)).status("w1", "m1");
-    expect(status).toMatchObject({ connected: false, runtimeAuth: "missing", apiKeySatisfies: false });
-    expect(status.reason).toContain("ANTHROPIC_API_KEY");
+  it("is disconnected with an owner-actionable subscription-first reason when no credential exists", async () => {
+    const status = await createClaudeRuntimeStatusProvider(deps("none")).status("w1", "m1");
+    expect(status).toMatchObject({
+      connected: false,
+      runtimeAuth: "missing",
+      authMode: null,
+      apiKeySatisfies: false,
+    });
+    expect(status.reason).toContain("CLAUDE_CODE_OAUTH_TOKEN");
     expect(status.reason).toContain("Connect Claude");
   });
 });
@@ -81,14 +87,18 @@ describe("provider-dispatched runtime status (#1568)", () => {
     apiKeySatisfies: false,
   };
 
-  it("projects the legacy codex shape field-for-field", () => {
-    expect(runtimeStatusFromCodex(codexStatus)).toEqual({ ...codexStatus, provider: "codex" });
+  it("projects the legacy codex shape field-for-field (+ subscription authMode when connected)", () => {
+    expect(runtimeStatusFromCodex(codexStatus)).toEqual({
+      ...codexStatus,
+      provider: "codex",
+      authMode: "subscription",
+    });
+    expect(runtimeStatusFromCodex({ ...codexStatus, connected: false }).authMode).toBeNull();
   });
 
   it("dispatches on the resolved provider", async () => {
     const claude = createClaudeRuntimeStatusProvider({
-      hasWorkspaceSubscription: async () => false,
-      hasEnvApiKey: () => true,
+      resolveAuthMode: async () => "api_key",
     });
     const codex = { status: async () => codexStatus };
 

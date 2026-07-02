@@ -28,11 +28,17 @@ Claude models (#246), but nothing let the deployment *default* to it.
    provider-agnostic status so older web bundles keep working through the switch. The team-run
    preflight gates per NEEDED harness: codex subtasks on the Codex doctor, claude-code subtasks on
    Claude readiness; `demo` never gates.
-3. **Claude auth = subscription first, env API key fallback** (#1568 supersedes the #246 no-key
-   rule, owner decision 2026-07-02): `decideAgentAuth` accepts the deployment env's
-   `ANTHROPIC_API_KEY` as a fallback credential. A workspace's own connected subscription token
-   still wins (per-tenant billing unchanged). The key is read from env only — never hardcoded,
-   never persisted, redacted from streamed output like every injected secret.
+3. **Claude auth = subscription FIRST, always** (owner decision 2026-07-02): agents run on the
+   owner's Claude subscription, not an API key. `decideAgentAuth` precedence:
+   (1) the workspace's own connected subscription token (#246 unchanged — per-tenant billing wins),
+   (2) the deployment env's **`CLAUDE_CODE_OAUTH_TOKEN`** (headless `claude setup-token` output,
+   the owner's Fly secret) — the PRIMARY server credential,
+   (3) the deployment env's `ANTHROPIC_API_KEY` — an OPTIONAL fallback only,
+   (4) nothing (the gate posts a connect prompt instead of launching).
+   `GET /me/runtime/status` reports the decision as `authMode: "subscription" | "api_key" | null`,
+   derived from the SAME resolver the launch secrets path uses so status and launch never disagree.
+   Every credential is env/vault-read only — never hardcoded, never persisted, redacted from
+   streamed output like every injected secret.
 4. **Web**: the `/everyday` shell asks `getRuntimeStatus()` and launches every subtask on the
    server-selected harness — no hardcoded vendor. The "Codex" operator role is renamed
    "Operator"; the persisted `codex_operator_lane` audit label + receipt prefix are kept so
@@ -42,8 +48,10 @@ Claude models (#246), but nothing let the deployment *default* to it.
 
 - Fresh deploys run the fleet on Claude via the Claude Code CLI; the codex binary is no longer on
   the critical path (its preflight checks only run when the codex harness is actually selected).
-- **The deployed server needs a real `ANTHROPIC_API_KEY` in its Fly env** (owner-set secret) OR a
-  connected workspace Claude subscription for runs to execute. A Claude.ai/Conductor subscription
-  is separate from server-side API access.
+- **The deployed server needs `CLAUDE_CODE_OAUTH_TOKEN` in its Fly env** — the owner runs
+  `claude setup-token` and sets the output as a Fly secret so agent runs bill the owner's Claude
+  subscription. `ANTHROPIC_API_KEY` may be set as an optional fallback; a workspace-connected
+  subscription token (Settings → Connect Claude) also works. Without any of these, runs block with
+  an actionable 409/connect prompt.
 - Send/spend approval-gate behavior is untouched — this ADR changes model execution auth only.
 - Rollback: set `AGENT_RUNTIME_PROVIDER=codex` (no code change).

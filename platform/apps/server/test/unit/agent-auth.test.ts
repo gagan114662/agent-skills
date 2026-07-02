@@ -23,11 +23,43 @@ describe("decideAgentAuth (#68/#246/#1568 — subscription first, env API key fa
     });
   });
 
-  it("#1568: falls back to the deployment env ANTHROPIC_API_KEY when no subscription is connected", () => {
+  it("#1568: the deployment env CLAUDE_CODE_OAUTH_TOKEN is the PRIMARY server credential", () => {
+    expect(
+      decideAgentAuth({ subscriptionToken: null, envSubscriptionToken: "env-setup-token" }),
+    ).toEqual({
+      mode: "subscription",
+      secrets: { CLAUDE_CODE_OAUTH_TOKEN: "env-setup-token" },
+    });
+    // It beats the API-key fallback — agents run on the owner's subscription, not a key.
+    expect(
+      decideAgentAuth({
+        subscriptionToken: null,
+        envSubscriptionToken: "env-setup-token",
+        envApiKey: "sk-ant-env",
+      }),
+    ).toEqual({
+      mode: "subscription",
+      secrets: { CLAUDE_CODE_OAUTH_TOKEN: "env-setup-token" },
+    });
+    // Malformed deployment tokens (bad Fly paste) are treated as absent, same as #659.
+    expect(
+      decideAgentAuth({ subscriptionToken: null, envSubscriptionToken: "bad token" }).mode,
+    ).toBe("none");
+  });
+
+  it("#1568: falls back to the deployment env ANTHROPIC_API_KEY when no subscription token exists", () => {
     expect(decideAgentAuth({ subscriptionToken: null, envApiKey: "sk-ant-env" })).toEqual({
       mode: "api_key",
       secrets: { ANTHROPIC_API_KEY: "sk-ant-env" },
     });
+    // A malformed env subscription token falls through to the key rather than blocking the run.
+    expect(
+      decideAgentAuth({
+        subscriptionToken: null,
+        envSubscriptionToken: "bad token",
+        envApiKey: "sk-ant-env",
+      }).mode,
+    ).toBe("api_key");
     // Blank env keys never count as auth.
     expect(decideAgentAuth({ subscriptionToken: null, envApiKey: "   " }).mode).toBe("none");
   });

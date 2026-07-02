@@ -81,10 +81,14 @@ async function startApp(
     ...(codexSubscription
       ? {
           runtimeStatus: {
-            status: async (workspaceId: string, memberId: string) => ({
-              ...(await codexSubscription.status(workspaceId, memberId)),
-              provider: "codex" as const,
-            }),
+            status: async (workspaceId: string, memberId: string) => {
+              const status = await codexSubscription.status(workspaceId, memberId);
+              return {
+                ...status,
+                provider: "codex" as const,
+                authMode: status.connected ? ("subscription" as const) : null,
+              };
+            },
           },
         }
       : {}),

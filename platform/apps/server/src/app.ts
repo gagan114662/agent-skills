@@ -771,15 +771,14 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     opts.teamCoordinator ?? createDefaultTeamCoordinator(app.log, sessionManager);
   const codexSubscription = opts.codexSubscription ?? createCodexSubscriptionStatusProvider();
   // #1568 runtime provider: the fleet executes on Claude by default (AGENT_RUNTIME_PROVIDER=codex
-  // restores the legacy posture). Readiness is provider-agnostic: Claude is connected when the
-  // workspace's own subscription token is on file OR the deployment env carries ANTHROPIC_API_KEY
-  // (the owner's Fly secret — presence only, the value never leaves the secrets path).
+  // restores the legacy posture). Readiness derives from the SAME AgentAuthResolver the launch
+  // secrets path uses — subscription first (workspace connect or the deployment env
+  // CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`), ANTHROPIC_API_KEY as optional fallback —
+  // so the status and the launch can never disagree. Modes only; values never leave the secrets path.
   const runtimeProvider = env.agent.provider;
   const statusAuthResolver = createAgentAuthResolver();
   const claudeRuntimeStatus = createClaudeRuntimeStatusProvider({
-    hasWorkspaceSubscription: async (workspaceId) =>
-      (await statusAuthResolver.resolve(workspaceId)).mode === "subscription",
-    hasEnvApiKey: () => Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
+    resolveAuthMode: async (workspaceId) => (await statusAuthResolver.resolve(workspaceId)).mode,
   });
   const runtimeStatus =
     opts.runtimeStatus ??

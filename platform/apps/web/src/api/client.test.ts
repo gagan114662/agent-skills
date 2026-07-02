@@ -68,6 +68,7 @@ describe("api client", () => {
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "api_key",
+      authMode: "api_key",
       fallback: "none",
       apiKeySatisfies: true,
     } as const;
@@ -89,6 +90,7 @@ describe("api client", () => {
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "missing",
+      authMode: null,
       fallback: "none",
       apiKeySatisfies: false,
     } as const;

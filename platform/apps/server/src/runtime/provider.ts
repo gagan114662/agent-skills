@@ -70,6 +70,13 @@ export interface RuntimeStatus {
   userAuthenticated: boolean;
   workspaceAuthenticated: boolean;
   runtimeAuth: "signed_in_subscription" | "api_key" | "missing";
+  /**
+   * How the runtime authenticates (#1568, owner decision): `subscription` = a Claude subscription
+   * token (the workspace's own connect OR the deployment `CLAUDE_CODE_OAUTH_TOKEN` from
+   * `claude setup-token`) — the primary path; `api_key` = the optional `ANTHROPIC_API_KEY`
+   * fallback; null = not connected.
+   */
+  authMode: "subscription" | "api_key" | null;
   fallback: "none";
   apiKeySatisfies: boolean;
 }
@@ -79,16 +86,20 @@ export interface RuntimeStatusProvider {
 }
 
 export interface ClaudeRuntimeStatusDeps {
-  /** Whether this workspace has a connected, well-formed Claude subscription token (#68/#246 vault). */
-  hasWorkspaceSubscription(workspaceId: string): Promise<boolean>;
-  /** Whether the deployment env carries an Anthropic API key (`ANTHROPIC_API_KEY`) — presence only, never the value. */
-  hasEnvApiKey(): boolean;
+  /**
+   * The auth mode the runtime would launch this workspace with — the SAME decision the
+   * SessionManager's secrets path makes (`AgentAuthResolver.resolve(...).mode`), so the status and
+   * the launch can never disagree. `subscription` covers both the workspace's own connect and the
+   * deployment `CLAUDE_CODE_OAUTH_TOKEN`; `api_key` is the optional env fallback.
+   */
+  resolveAuthMode(workspaceId: string): Promise<"subscription" | "api_key" | "none">;
 }
 
 /**
- * Claude runtime readiness: connected when the workspace's own subscription token is on file, OR when
- * the deployment env provides `ANTHROPIC_API_KEY` (the owner-set Fly secret). Secret-free by
- * construction — this reports presence booleans and a human reason, never a credential value.
+ * Claude runtime readiness: connected when a Claude SUBSCRIPTION token is available (the workspace's
+ * own connect, or the deployment env `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` — the
+ * primary path), or when the optional `ANTHROPIC_API_KEY` fallback is set. Secret-free by
+ * construction — this reports the mode and a human reason, never a credential value.
  */
 export function createClaudeRuntimeStatusProvider(deps: ClaudeRuntimeStatusDeps): RuntimeStatusProvider {
   return {
@@ -100,21 +111,24 @@ export function createClaudeRuntimeStatusProvider(deps: ClaudeRuntimeStatusDeps)
         workspaceAuthenticated: true,
         fallback: "none" as const,
       };
-      if (await deps.hasWorkspaceSubscription(workspaceId)) {
+      const mode = await deps.resolveAuthMode(workspaceId);
+      if (mode === "subscription") {
         return {
           ...base,
           connected: true,
           reason: "Claude subscription auth is connected and ready for agent runs.",
           runtimeAuth: "signed_in_subscription",
+          authMode: "subscription",
           apiKeySatisfies: false,
         };
       }
-      if (deps.hasEnvApiKey()) {
+      if (mode === "api_key") {
         return {
           ...base,
           connected: true,
-          reason: "Anthropic API key auth (deployment env) is ready for agent runs.",
+          reason: "Anthropic API key fallback (deployment env) is ready for agent runs.",
           runtimeAuth: "api_key",
+          authMode: "api_key",
           apiKeySatisfies: true,
         };
       }
@@ -123,8 +137,10 @@ export function createClaudeRuntimeStatusProvider(deps: ClaudeRuntimeStatusDeps)
         connected: false,
         reason:
           "Claude is not connected for this workspace yet. Connect a Claude subscription in " +
-          "Settings → Connect Claude, or set ANTHROPIC_API_KEY in the server environment.",
+          "Settings → Connect Claude, or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) " +
+          "in the server environment.",
         runtimeAuth: "missing",
+        authMode: null,
         apiKeySatisfies: false,
       };
     },
@@ -133,7 +149,9 @@ export function createClaudeRuntimeStatusProvider(deps: ClaudeRuntimeStatusDeps)
 
 /** Project the legacy Codex doctor status into the provider-agnostic shape (field-for-field). */
 export function runtimeStatusFromCodex(status: CodexSubscriptionStatus): RuntimeStatus {
-  return { ...status, provider: "codex" };
+  // Codex runs are subscription-backed by contract (never an API key), so a connected doctor report
+  // maps to the subscription auth mode.
+  return { ...status, provider: "codex", authMode: status.connected ? "subscription" : null };
 }
 
 /**

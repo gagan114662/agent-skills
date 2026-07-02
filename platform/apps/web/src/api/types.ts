@@ -647,6 +647,8 @@ export interface RuntimeStatus {
   userAuthenticated: boolean;
   workspaceAuthenticated: boolean;
   runtimeAuth: "signed_in_subscription" | "api_key" | "missing";
+  /** How the runtime authenticates: subscription (primary) or api_key (fallback); null = not connected. */
+  authMode: "subscription" | "api_key" | null;
   fallback: "none";
   apiKeySatisfies: boolean;
 }

@@ -228,6 +228,7 @@ function runtimeStatusFixture(connected: boolean): RuntimeStatus {
     userAuthenticated: true,
     workspaceAuthenticated: true,
     runtimeAuth: connected ? "signed_in_subscription" : "missing",
+    authMode: connected ? ("subscription" as const) : null,
     fallback: "none",
     apiKeySatisfies: false,
   };

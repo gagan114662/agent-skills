@@ -75,6 +75,7 @@ describe("LiveEverydayShell (#1181)", () => {
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "signed_in_subscription",
+      authMode: "subscription",
       fallback: "none",
       apiKeySatisfies: false,
     });
@@ -220,6 +221,7 @@ describe("LiveEverydayShell (#1181)", () => {
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "missing",
+      authMode: null,
       fallback: "none",
       apiKeySatisfies: false,
     });
@@ -743,6 +745,7 @@ describe("LiveEverydayShell (#1181)", () => {
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "missing",
+      authMode: null,
       fallback: "none",
       apiKeySatisfies: false,
     });
@@ -789,6 +792,7 @@ describe("LiveEverydayShell (#1181)", () => {
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "signed_in_subscription",
+      authMode: "subscription",
       fallback: "none",
       apiKeySatisfies: false,
     });
@@ -841,6 +845,7 @@ describe("LiveEverydayShell (#1181)", () => {
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "signed_in_subscription",
+      authMode: "subscription",
       fallback: "none",
       apiKeySatisfies: false,
     });
@@ -891,6 +896,7 @@ describe("LiveEverydayShell (#1181)", () => {
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "signed_in_subscription",
+      authMode: "subscription",
       fallback: "none",
       apiKeySatisfies: false,
     });
@@ -986,6 +992,7 @@ describe("LiveEverydayShell (#1181)", () => {
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "signed_in_subscription",
+      authMode: "subscription",
       fallback: "none",
       apiKeySatisfies: false,
     });
