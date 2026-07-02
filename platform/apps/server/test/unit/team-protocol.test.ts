@@ -31,6 +31,37 @@ describe("team channel protocol (encode / tryParse)", () => {
     expect(tryParseTeamEvent(encodeTeamEvent(event))).toEqual(event);
   });
 
+  it("round-trips a typed Scout research artifact (#1540)", () => {
+    const event = sample({
+      artifact: {
+        kind: "scout_research",
+        schemaVersion: 1,
+        siteSummary: "Acme sells compliance workflow software.",
+        icp: "RevOps leaders at regulated B2B teams",
+        positioning: "A clean audit trail without spreadsheet wrangling.",
+        proofPoints: ["SOC2 page mentions audit exports", "Pricing page names RevOps"],
+        competitors: ["spreadsheet process", "legacy GRC suite"],
+        toneNotes: "Plain, direct, low-drama.",
+        sourceUrls: ["https://acme.test"],
+      },
+    });
+
+    expect(tryParseTeamEvent(encodeTeamEvent(event))).toEqual(event);
+  });
+
+  it("rejects malformed Scout research artifacts", () => {
+    const body = `${TEAM_EVENT_MARKER} ${JSON.stringify({
+      ...sample(),
+      artifact: {
+        kind: "scout_research",
+        schemaVersion: 1,
+        siteSummary: "missing arrays",
+      },
+    })}`;
+
+    expect(tryParseTeamEvent(body)).toBeNull();
+  });
+
   it("tags the body with the marker prefix", () => {
     expect(encodeTeamEvent(sample())).toMatch(new RegExp(`^${TEAM_EVENT_MARKER} `));
   });

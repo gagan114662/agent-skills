@@ -7,6 +7,7 @@ import { grantCapability } from "../db/repositories/permissions.js";
 import { newId } from "../db/id.js";
 import type { TeamCoordinator, Subtask } from "../team/coordinator.js";
 import { isHarnessKind } from "../runtime/harness.js";
+import type { TeamArtifactKind } from "@reload/shared";
 
 export interface TeamRoutesOptions {
   coordinator: TeamCoordinator;
@@ -34,10 +35,25 @@ interface SubtaskBody {
   branch?: string;
   harness?: string;
   phase?: number;
+  producesArtifacts?: unknown;
+  requiresArtifacts?: unknown;
 }
 
 function parseSubtaskPhase(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+const TEAM_ARTIFACT_KINDS: readonly TeamArtifactKind[] = ["scout_research"];
+
+function parseArtifactKinds(value: unknown): TeamArtifactKind[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const kinds: TeamArtifactKind[] = [];
+  for (const item of value) {
+    if (typeof item !== "string" || !TEAM_ARTIFACT_KINDS.includes(item as TeamArtifactKind)) return null;
+    kinds.push(item as TeamArtifactKind);
+  }
+  return [...new Set(kinds)];
 }
 
 /**
@@ -88,6 +104,10 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
       if (s.harness !== undefined && !isHarnessKind(s.harness)) {
         return reply.code(400).send({ error: "unknown subtask.harness" });
       }
+      const producesArtifacts = parseArtifactKinds(s.producesArtifacts);
+      if (!producesArtifacts) return reply.code(400).send({ error: "unknown subtask.producesArtifacts" });
+      const requiresArtifacts = parseArtifactKinds(s.requiresArtifacts);
+      if (!requiresArtifacts) return reply.code(400).send({ error: "unknown subtask.requiresArtifacts" });
       const target = await getWorkspaceMember(s.agentMemberId, id.workspaceId);
       if (!target) return reply.code(404).send({ error: "agent not found in this workspace" });
       if (target.kind !== "agent") {
@@ -100,6 +120,8 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         task: s.task,
         branch: s.branch,
         ...(phase ? { phase } : {}),
+        ...(producesArtifacts.length > 0 ? { producesArtifacts } : {}),
+        ...(requiresArtifacts.length > 0 ? { requiresArtifacts } : {}),
         preferredHarness: isHarnessKind(s.harness) ? s.harness : undefined,
       });
     }
@@ -164,6 +186,8 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         agentMemberId: s.agentMemberId,
         branch: s.branch,
         phase: s.phase ?? 1,
+        producesArtifacts: s.producesArtifacts ?? [],
+        requiresArtifacts: s.requiresArtifacts ?? [],
         harness: s.preferredHarness ?? null,
       })),
     });

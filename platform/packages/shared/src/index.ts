@@ -130,6 +130,27 @@ export interface PolicySimulationResult {
  */
 export type TeamEventKind = "started" | "milestone" | "blocked" | "needs_handoff" | "done";
 
+/** Typed artifacts teammates can hand off during a team run. */
+export type TeamArtifactKind = "scout_research";
+
+/**
+ * Scout's research handoff for downstream writers. This is intentionally compact enough to fit in a
+ * room event but structured enough that Quill cannot fall back to generic filler.
+ */
+export interface ScoutResearchArtifact {
+  kind: "scout_research";
+  schemaVersion: 1;
+  siteSummary: string;
+  icp: string;
+  positioning: string;
+  proofPoints: string[];
+  competitors: string[];
+  toneNotes: string;
+  sourceUrls: string[];
+}
+
+export type TeamArtifact = ScoutResearchArtifact;
+
 /** One structured status event on a team run's channel. */
 export interface TeamEvent {
   /** Groups every event belonging to one team run. */
@@ -143,6 +164,8 @@ export interface TeamEvent {
   summary: string;
   /** The branch the agent is working on, or null before one is assigned. */
   branch: string | null;
+  /** Optional structured handoff artifact produced by this event. */
+  artifact?: TeamArtifact | null;
   /** ISO-8601 timestamp the event was created. */
   createdAt: string;
 }
