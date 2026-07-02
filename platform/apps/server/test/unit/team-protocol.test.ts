@@ -17,6 +17,15 @@ const sample = (over: Partial<TeamEvent> = {}): TeamEvent => ({
   ...over,
 });
 
+const strongScores = {
+  specificityToBusiness: 5,
+  hookStrength: 4,
+  clarity: 5,
+  evidenceUse: 4,
+  ctaQuality: 4,
+  voiceConsistency: 5,
+};
+
 describe("team channel protocol (encode / tryParse)", () => {
   it("round-trips every event kind through encode → parse", () => {
     for (const kind of ["started", "milestone", "blocked", "needs_handoff", "done"] as const) {
@@ -140,6 +149,62 @@ describe("team channel protocol (encode / tryParse)", () => {
     expect(tryParseTeamEvent(body)).toMatchObject({
       kind: "blocked",
       summary: "blocked: invalid draft_set artifact: google_rsa.headlines: must include exactly 15 headlines",
+    });
+  });
+
+  it("round-trips a Lens rubric review artifact (#1542)", () => {
+    const event = sample({
+      artifact: {
+        kind: "lens_review",
+        schemaVersion: 1,
+        threshold: 4,
+        summary: "The email is specific, proof-led, and ready for owner review.",
+        reviews: [
+          {
+            format: "email",
+            title: "Welcome email",
+            scores: strongScores,
+            averageScore: 4.5,
+            revisionNote: "Tighten the CTA around the room review moment.",
+          },
+        ],
+      },
+    });
+
+    expect(tryParseTeamEvent(encodeTeamEvent(event))).toEqual(event);
+  });
+
+  it("requires one revised draft when a Lens score falls below threshold (#1542)", () => {
+    const lowScores = {
+      specificityToBusiness: 3,
+      hookStrength: 3,
+      clarity: 3,
+      evidenceUse: 3,
+      ctaQuality: 3,
+      voiceConsistency: 3,
+    };
+    const body = TEAM_EVENT_MARKER + " " + JSON.stringify({
+      ...sample(),
+      artifact: {
+        kind: "lens_review",
+        schemaVersion: 1,
+        threshold: 4,
+        summary: "The email needs one proof-led revision before owner review.",
+        reviews: [
+          {
+            format: "email",
+            title: "Welcome email",
+            scores: lowScores,
+            averageScore: 3,
+            revisionNote: "Replace generic language with the observed room workflow.",
+          },
+        ],
+      },
+    });
+
+    expect(tryParseTeamEvent(body)).toMatchObject({
+      kind: "blocked",
+      summary: "blocked: invalid lens_review artifact: email.revisedDraft: required when averageScore is below threshold",
     });
   });
 

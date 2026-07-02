@@ -38,7 +38,7 @@ function telegramConnectReply(status: "connected" | "already_connected_elsewhere
   if (status === "connected") {
     return [
       "Telegram is connected to your ipop marketing room.",
-      "Send a target here and Scout, Quill, Echo, and Bid will start in the same room.",
+      "Send a target here and Scout, Quill, Lens, Echo, and Bid will start in the same room.",
       'Try: "market ipop.ai to SaaS founders" or "turn tomo.ai into a sharper launch plan".',
       "Useful drafts, approval requests, and receipts will mirror back here.",
     ].join("\n");

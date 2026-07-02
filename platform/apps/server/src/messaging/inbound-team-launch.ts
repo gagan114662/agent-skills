@@ -71,11 +71,12 @@ export interface InboundTeamLaunchOptions {
 }
 
 const ROOM_CHANNEL_NAME = "general";
-const LAUNCH_HANDLES = ["scout", "quill", "echo", "bid"] as const;
+const LAUNCH_HANDLES = ["scout", "quill", "lens", "echo", "bid"] as const;
 
 const LANE_BY_HANDLE: Record<(typeof LAUNCH_HANDLES)[number], string> = {
   scout: "site and market audit",
   quill: "positioning and copy",
+  lens: "taste, proof, and rubric scoring",
   echo: "social launch",
   bid: "paid acquisition plan",
 };
@@ -83,8 +84,9 @@ const LANE_BY_HANDLE: Record<(typeof LAUNCH_HANDLES)[number], string> = {
 const PHASE_BY_HANDLE: Record<(typeof LAUNCH_HANDLES)[number], number> = {
   scout: 1,
   quill: 2,
-  echo: 3,
-  bid: 3,
+  lens: 3,
+  echo: 4,
+  bid: 4,
 };
 
 function roomUrl(appBaseUrl?: string): string {
@@ -137,8 +139,15 @@ function buildSubtask(handle: (typeof LAUNCH_HANDLES)[number], agentMemberId: st
     phase: PHASE_BY_HANDLE[handle],
     ...(handle === "scout" ? { producesArtifacts: ["scout_research" as const] } : {}),
     ...(handle === "quill" ? { producesArtifacts: ["draft_set" as const] } : {}),
-    ...(handle === "quill" || handle === "echo" || handle === "bid"
+    ...(handle === "lens" ? { producesArtifacts: ["lens_review" as const] } : {}),
+    ...(handle === "quill"
       ? { requiresArtifacts: ["scout_research" as const] }
+      : {}),
+    ...(handle === "lens"
+      ? { requiresArtifacts: ["scout_research" as const, "draft_set" as const] }
+      : {}),
+    ...(handle === "echo" || handle === "bid"
+      ? { requiresArtifacts: ["scout_research" as const, "draft_set" as const, "lens_review" as const] }
       : {}),
     preferredHarness: "codex",
     task:
@@ -155,7 +164,9 @@ function buildSubtask(handle: (typeof LAUNCH_HANDLES)[number], agentMemberId: st
         ? "Before this lane is done, produce the required scout_research artifact with siteSummary, ICP, positioning, proof points, competitors, tone notes, and source URLs.\n\n"
         : handle === "quill"
           ? "Use the validated scout_research artifact injected by the coordinator; produce the required draft_set artifact with channel-native formats that pass validation, and cite proofPoints or sourceUrls in every draft.\n\n"
-          : "Use the validated scout_research artifact injected by the coordinator; cite artifact proofPoints or sourceUrls in any draft or recommendation.\n\n") +
+          : handle === "lens"
+            ? "Use the validated scout_research and draft_set artifacts injected by the coordinator; score every draft with the six-part rubric, revise any draft below threshold once, and produce the required lens_review artifact. Do not send, post, publish, or spend.\n\n"
+            : "Use the validated scout_research, draft_set, and lens_review artifacts injected by the coordinator; cite artifact proofPoints, sourceUrls, and Lens scores in any draft or recommendation.\n\n") +
       "Owner brief: " +
       objective,
   };

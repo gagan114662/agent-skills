@@ -1,5 +1,9 @@
 import type {
+  ContentRubricMetric,
+  DraftRubricScores,
   DraftSetArtifact,
+  LensDraftReview,
+  LensReviewArtifact,
   MarketingDraft,
   MarketingDraftFormat,
   ScoutResearchArtifact,
@@ -44,6 +48,15 @@ const MARKETING_DRAFT_FORMATS: readonly MarketingDraftFormat[] = [
   "email",
   "landing_hero",
   "seo_snippet",
+];
+
+const CONTENT_RUBRIC_METRICS: readonly ContentRubricMetric[] = [
+  "specificityToBusiness",
+  "hookStrength",
+  "clarity",
+  "evidenceUse",
+  "ctaQuality",
+  "voiceConsistency",
 ];
 
 function parseDraftFields(input: unknown): Record<string, string | string[]> | null {
@@ -171,6 +184,89 @@ function validateDraftSetArtifact(artifact: DraftSetArtifact): string[] {
   return issues;
 }
 
+function rubricAverage(scores: DraftRubricScores): number {
+  const total = CONTENT_RUBRIC_METRICS.reduce((sum, metric) => sum + scores[metric], 0);
+  return Math.round((total / CONTENT_RUBRIC_METRICS.length) * 10) / 10;
+}
+
+function reviewIssue(review: Pick<LensDraftReview, "format" | "title">, field: string, message: string): string {
+  return review.format + "." + field + ": " + message;
+}
+
+function parseRubricScores(input: unknown): DraftRubricScores | null {
+  if (!isRecord(input)) return null;
+  const scores: Partial<DraftRubricScores> = {};
+  for (const metric of CONTENT_RUBRIC_METRICS) {
+    const score = input[metric];
+    if (typeof score !== "number") return null;
+    scores[metric] = score;
+  }
+  return scores as DraftRubricScores;
+}
+
+function parseLensDraftReview(input: unknown): LensDraftReview | null {
+  if (!isRecord(input)) return null;
+  if (typeof input.format !== "string" || !MARKETING_DRAFT_FORMATS.includes(input.format as MarketingDraftFormat)) {
+    return null;
+  }
+  if (typeof input.title !== "string" || typeof input.averageScore !== "number" || typeof input.revisionNote !== "string") {
+    return null;
+  }
+  const scores = parseRubricScores(input.scores);
+  if (!scores) return null;
+  const revisedDraft = input.revisedDraft === undefined ? undefined : parseMarketingDraft(input.revisedDraft);
+  if (input.revisedDraft !== undefined && !revisedDraft) return null;
+  return {
+    format: input.format as MarketingDraftFormat,
+    title: input.title,
+    scores,
+    averageScore: input.averageScore,
+    revisionNote: input.revisionNote,
+    ...(revisedDraft ? { revisedDraft } : {}),
+  };
+}
+
+function validateLensReviewArtifact(artifact: LensReviewArtifact): string[] {
+  const issues: string[] = [];
+  if (artifact.threshold < 1 || artifact.threshold > 5) {
+    issues.push("lens_review.threshold: must be between 1 and 5");
+  }
+  if (!artifact.summary.trim()) issues.push("lens_review.summary: required");
+  if (artifact.reviews.length === 0) issues.push("lens_review.reviews: must include at least one draft review");
+  for (const review of artifact.reviews) {
+    if (!review.title.trim()) issues.push(reviewIssue(review, "title", "required"));
+    for (const metric of CONTENT_RUBRIC_METRICS) {
+      const score = review.scores[metric];
+      if (!Number.isInteger(score) || score < 1 || score > 5) {
+        issues.push(reviewIssue(review, "scores." + metric, "must be an integer from 1 to 5"));
+      }
+    }
+    const expectedAverage = rubricAverage(review.scores);
+    if (Math.abs(review.averageScore - expectedAverage) > 0.05) {
+      issues.push(reviewIssue(review, "averageScore", "must equal computed rubric average " + expectedAverage));
+    }
+    if (review.revisionNote.trim().length < 12) {
+      issues.push(reviewIssue(review, "revisionNote", "must be a concrete revision note"));
+    }
+    if (review.averageScore < artifact.threshold) {
+      if (!review.revisedDraft) {
+        issues.push(reviewIssue(review, "revisedDraft", "required when averageScore is below threshold"));
+      } else {
+        if (review.revisedDraft.format !== review.format) {
+          issues.push(reviewIssue(review, "revisedDraft.format", "must match reviewed draft format"));
+        }
+        for (const issue of validateMarketingDraft(review.revisedDraft)) {
+          const separator = issue.indexOf(": ");
+          const field = separator === -1 ? "revisedDraft" : issue.slice(0, separator).split(".").slice(1).join(".");
+          const message = separator === -1 ? issue : issue.slice(separator + 2);
+          issues.push(reviewIssue(review, "revisedDraft." + field, message));
+        }
+      }
+    }
+  }
+  return issues;
+}
+
 function parseScoutResearchArtifact(input: Record<string, unknown>): ScoutResearchArtifact | null {
   if (
     input.kind !== "scout_research" ||
@@ -200,7 +296,7 @@ function parseScoutResearchArtifact(input: Record<string, unknown>): ScoutResear
 
 type ArtifactParseResult =
   | { ok: true; artifact: TeamArtifact }
-  | { ok: false; error: string | null };
+  | { ok: false; kind: string | null; error: string | null };
 
 function parseDraftSetArtifact(input: Record<string, unknown>): { artifact: DraftSetArtifact | null; error: string | null } {
   if (input.kind !== "draft_set" || input.schemaVersion !== 1 || !Array.isArray(input.drafts)) {
@@ -220,19 +316,49 @@ function parseDraftSetArtifact(input: Record<string, unknown>): { artifact: Draf
   return issues.length === 0 ? { artifact, error: null } : { artifact: null, error: issues[0] ?? "draft_set: invalid" };
 }
 
+function parseLensReviewArtifact(input: Record<string, unknown>): { artifact: LensReviewArtifact | null; error: string | null } {
+  if (
+    input.kind !== "lens_review" ||
+    input.schemaVersion !== 1 ||
+    typeof input.threshold !== "number" ||
+    typeof input.summary !== "string" ||
+    !Array.isArray(input.reviews)
+  ) {
+    return { artifact: null, error: "lens_review: expected schemaVersion 1, threshold, summary, and reviews array" };
+  }
+  const reviews = input.reviews.map(parseLensDraftReview);
+  const malformedIndex = reviews.findIndex((review) => review === null);
+  if (malformedIndex !== -1) {
+    return { artifact: null, error: "lens_review.reviews[" + malformedIndex + "]: malformed review" };
+  }
+  const artifact: LensReviewArtifact = {
+    kind: "lens_review",
+    schemaVersion: 1,
+    threshold: input.threshold,
+    summary: input.summary,
+    reviews: reviews as LensDraftReview[],
+  };
+  const issues = validateLensReviewArtifact(artifact);
+  return issues.length === 0 ? { artifact, error: null } : { artifact: null, error: issues[0] ?? "lens_review: invalid" };
+}
+
 function parseArtifact(input: unknown): ArtifactParseResult {
-  if (input == null) return { ok: false, error: null };
-  if (typeof input !== "object") return { ok: false, error: null };
+  if (input == null) return { ok: false, kind: null, error: null };
+  if (typeof input !== "object") return { ok: false, kind: null, error: null };
   const artifact = input as Record<string, unknown>;
   if (artifact.kind === "scout_research") {
     const parsed = parseScoutResearchArtifact(artifact);
-    return parsed ? { ok: true, artifact: parsed } : { ok: false, error: null };
+    return parsed ? { ok: true, artifact: parsed } : { ok: false, kind: "scout_research", error: null };
   }
   if (artifact.kind === "draft_set") {
     const parsed = parseDraftSetArtifact(artifact);
-    return parsed.artifact ? { ok: true, artifact: parsed.artifact } : { ok: false, error: parsed.error };
+    return parsed.artifact ? { ok: true, artifact: parsed.artifact } : { ok: false, kind: "draft_set", error: parsed.error };
   }
-  return { ok: false, error: null };
+  if (artifact.kind === "lens_review") {
+    const parsed = parseLensReviewArtifact(artifact);
+    return parsed.artifact ? { ok: true, artifact: parsed.artifact } : { ok: false, kind: "lens_review", error: parsed.error };
+  }
+  return { ok: false, kind: null, error: null };
 }
 
 /** Encode a team event into a channel message body: `<marker> <json>`. */
@@ -275,7 +401,7 @@ export function tryParseTeamEvent(body: string): TeamEvent | null {
         subtaskId: e.subtaskId,
         agentMemberId: e.agentMemberId,
         kind: "blocked",
-        summary: "blocked: invalid draft_set artifact: " + artifactResult.error,
+        summary: "blocked: invalid " + (artifactResult.kind ?? "team") + " artifact: " + artifactResult.error,
         branch: e.branch as string | null,
         createdAt: e.createdAt,
       };
