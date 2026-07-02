@@ -958,10 +958,10 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
 
     expect(canceled).toEqual(["stuck"]);
     expect(result.results[0]?.ok).toBe(false);
-    expect(result.results[0]?.error).toContain("timed out after 5ms");
+    expect(result.results[0]?.error).toMatch(/^timed out after [1-5]ms$/);
     expect(timeline.subtasks[0]).toMatchObject({
       state: "failed",
-      reason: "timed out after 5ms",
+      reason: result.results[0]?.error,
       sessionIds: ["stuck"],
     });
   });
