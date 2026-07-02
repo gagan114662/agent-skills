@@ -312,4 +312,57 @@ describe("Connections (#258)", () => {
     fireEvent.click(screen.getByRole("button", { name: /disconnect/i }));
     expect(onDisconnect).toHaveBeenCalledWith("email");
   });
+
+  it("shows a verified outbound send receipt after an approved send lands (#395 §3)", () => {
+    const data: ConnectionsResponse = {
+      ...CUSTOMER,
+      outboundReceipts: [
+        {
+          id: "rcpt-1",
+          channel: "email_postmark",
+          recipient: "stranger@example.com",
+          source: "production_readback",
+          externalRef: "pm-message-abc-123",
+          httpStatus: null,
+          verified: true,
+          approvalRequestId: "req-13-xyz",
+          observedAtMs: 1_750_000_000_000,
+          createdAtMs: 1_750_000_001_000,
+        },
+      ],
+    };
+    render(<Connections data={data} {...noopHandlers} />);
+    expect(screen.getByText(/recent outbound sends/i)).toBeInTheDocument();
+    expect(screen.getByText(/stranger@example\.com/)).toBeInTheDocument();
+    // The production readback (the ESP MessageID) is the #200 §3 proof the send reached a real inbox.
+    expect(screen.getByText("pm-message-abc-123")).toBeInTheDocument();
+    expect(screen.getByText(/^Delivered$/)).toBeInTheDocument();
+  });
+
+  it("marks an unconfirmed send as not-confirmed (never claims delivery it can't prove)", () => {
+    const data: ConnectionsResponse = {
+      ...CUSTOMER,
+      outboundReceipts: [
+        {
+          id: "rcpt-2",
+          channel: "email_resend",
+          recipient: "lead@example.com",
+          source: "production_readback",
+          externalRef: "rs-9",
+          httpStatus: null,
+          verified: false,
+          approvalRequestId: "req-13-2",
+          observedAtMs: 1_750_000_000_000,
+          createdAtMs: 1_750_000_001_000,
+        },
+      ],
+    };
+    render(<Connections data={data} {...noopHandlers} />);
+    expect(screen.getByText(/^Not confirmed$/)).toBeInTheDocument();
+  });
+
+  it("hides the outbound-sends section entirely until a real send has landed", () => {
+    render(<Connections data={CUSTOMER} {...noopHandlers} />);
+    expect(screen.queryByText(/recent outbound sends/i)).not.toBeInTheDocument();
+  });
 });

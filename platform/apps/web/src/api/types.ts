@@ -126,10 +126,33 @@ export interface ConnectionView {
   connected: boolean;
 }
 
+/**
+ * One persisted outbound send receipt (#395 §3, `GET /me/connections`) — the read-back proof that an approved
+ * send actually touched reality (#200 §3). Owner-facing subset of the ledger row: never a secret.
+ */
+export interface OutboundSendReceipt {
+  id: string;
+  channel: string;
+  recipient: string;
+  source: "live_url" | "production_readback";
+  externalRef: string;
+  httpStatus: number | null;
+  verified: boolean;
+  approvalRequestId: string | null;
+  observedAtMs: number;
+  createdAtMs: number;
+}
+
 /** The connections surface (#258): what this workspace can connect + whether it manages internal ones. */
 export interface ConnectionsResponse {
   connections: ConnectionView[];
   canManageInternal: boolean;
+  /**
+   * Read-back receipts for approved outbound sends (#395 §3). Newest first; empty until a real send lands.
+   * Optional so an older/partial payload (or a fixture that predates this field) is read as "no sends yet"
+   * rather than a type error — the server always sends the array.
+   */
+  outboundReceipts?: OutboundSendReceipt[];
 }
 
 export interface TelegramConnectionLinkResponse {

@@ -271,6 +271,13 @@ export const CONNECTIONS = {
   tokenPlaceholder: "Paste the token",
   internalConnect: "Connect publishing",
   error: "Couldn't update the connection.",
+  // Recent outbound sends (#395 §3): the read-back proof that an approved send actually reached a real inbox.
+  receiptsTitle: "Recent outbound sends",
+  receiptsHint: "Every send your fleet made after you approved it — with the provider's delivery receipt.",
+  receiptDelivered: "Delivered",
+  receiptUnconfirmed: "Not confirmed",
+  receiptTo: "To",
+  receiptRef: "Provider reference",
 } as const;
 
 /**

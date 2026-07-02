@@ -32,7 +32,7 @@ export function ConnectionsPanel(): React.JSX.Element {
     void api
       .getConnections()
       .then((d) => live && setData(d))
-      .catch(() => live && setData({ connections: [], canManageInternal: false }));
+      .catch(() => live && setData({ connections: [], canManageInternal: false, outboundReceipts: [] }));
     return () => {
       live = false;
     };
