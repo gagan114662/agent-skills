@@ -14,7 +14,13 @@ import { newId } from "../db/id.js";
 import { seedDepartmentForWorkspace } from "../marketing/default.js";
 import type { SessionManager } from "../runtime/manager.js";
 import type { TeamCoordinator, Subtask } from "../team/coordinator.js";
-import type { CodexSubscriptionStatus, CodexSubscriptionStatusProvider } from "../routes/team.js";
+import {
+  harnessForProvider,
+  DEFAULT_RUNTIME_PROVIDER,
+  type RuntimeProvider,
+  type RuntimeStatus,
+  type RuntimeStatusProvider,
+} from "../runtime/provider.js";
 import { publicAppOrigin } from "../product-origins.js";
 import { deliverPostedMessage } from "./delivery.js";
 
@@ -50,7 +56,7 @@ export type InboundTeamLaunchResult =
       workspaceId: string;
       channelId: string;
       messageId: string;
-      codexStatus: CodexSubscriptionStatus;
+      runtimeStatus: RuntimeStatus;
       replyText: string;
     }
   | {
@@ -66,7 +72,10 @@ export type InboundTeamLaunchResult =
 export interface InboundTeamLaunchOptions {
   sessionManager: SessionManager;
   coordinator: TeamCoordinator;
-  codexSubscription: CodexSubscriptionStatusProvider;
+  /** Provider-agnostic runtime readiness (#1568) — gates the launch like the team-run route does. */
+  runtimeStatus: RuntimeStatusProvider;
+  /** Resolved runtime provider (#1568). Default `claude`; decides the harness subtasks execute on. */
+  runtimeProvider?: RuntimeProvider;
   appBaseUrl?: string;
 }
 
@@ -129,7 +138,12 @@ function connectionHelp(providerName: string, appUrl: string): string {
   );
 }
 
-function buildSubtask(handle: (typeof LAUNCH_HANDLES)[number], agentMemberId: string, objective: string): Subtask {
+function buildSubtask(
+  handle: (typeof LAUNCH_HANDLES)[number],
+  agentMemberId: string,
+  objective: string,
+  provider: RuntimeProvider,
+): Subtask {
   const title = displayHandle(handle);
   const lane = LANE_BY_HANDLE[handle];
   return {
@@ -149,7 +163,8 @@ function buildSubtask(handle: (typeof LAUNCH_HANDLES)[number], agentMemberId: st
     ...(handle === "echo" || handle === "bid"
       ? { requiresArtifacts: ["scout_research" as const, "brand_voice" as const, "draft_set" as const, "lens_review" as const] }
       : {}),
-    preferredHarness: "codex",
+    // #1568: the harness follows the resolved runtime provider (Claude default) — no hard Codex pin.
+    preferredHarness: harnessForProvider(provider),
     task:
       "You are " +
       title +
@@ -197,6 +212,7 @@ async function requireRoomChannel(channelId: string): Promise<Channel> {
 
 export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions): InboundTeamLaunchService {
   const appUrl = roomUrl(options.appBaseUrl);
+  const provider = options.runtimeProvider ?? DEFAULT_RUNTIME_PROVIDER;
 
   return {
     async start(input) {
@@ -280,8 +296,8 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
       }).filter((agent): agent is { handle: (typeof LAUNCH_HANDLES)[number]; agentMemberId: string } => agent !== null);
       if (selectedAgents.length === 0) throw new Error("marketing seed did not create launch agents");
 
-      const codexStatus = await options.codexSubscription.status(owner.workspaceId, createdByMemberId);
-      if (!codexStatus.connected) {
+      const runtimeStatus = await options.runtimeStatus.status(owner.workspaceId, createdByMemberId);
+      if (!runtimeStatus.connected) {
         const authorMemberId = selectedAgents[0]?.agentMemberId ?? createdByMemberId;
         const agentIdentity: Identity = {
           workspaceId: owner.workspaceId,
@@ -305,14 +321,16 @@ export function createInboundTeamLaunchService(options: InboundTeamLaunchOptions
           workspaceId: owner.workspaceId,
           channelId: channel.id,
           messageId: rootMessage.id,
-          codexStatus,
+          runtimeStatus,
           replyText:
             "I opened the marketing room, but the agent runtime is not connected yet. Connect it in ipop, then send the brief again: " +
             appUrl,
         };
       }
 
-      const subtasks = selectedAgents.map((agent) => buildSubtask(agent.handle, agent.agentMemberId, objective));
+      const subtasks = selectedAgents.map((agent) =>
+        buildSubtask(agent.handle, agent.agentMemberId, objective, provider),
+      );
       for (const subtask of subtasks) {
         await addChannelMember(channel.id, subtask.agentMemberId);
         await grantCapability({

@@ -10,7 +10,7 @@ import { resolveServiceSecrets } from "../../src/db/repositories/external-creden
 import { newId } from "../../src/db/id.js";
 import { closeRedis } from "../../src/redis/index.js";
 import { channelPoster } from "../../src/runtime/default.js";
-import type { CodexSubscriptionStatus, CodexSubscriptionStatusProvider } from "../../src/routes/team.js";
+import type { RuntimeStatus, RuntimeStatusProvider } from "../../src/runtime/provider.js";
 import type { LaunchInput, SessionLogger } from "../../src/runtime/manager.js";
 import { TeamChannel } from "../../src/team/channel.js";
 import { TeamCoordinator } from "../../src/team/coordinator.js";
@@ -30,7 +30,7 @@ const originalEnv = {
 };
 const sendMessage = vi.fn(async () => ({ ok: true, messageId: "42" }));
 const teamLaunches: LaunchInput[] = [];
-let codexConnected = false;
+let runtimeConnected = false;
 
 const silentLogger: SessionLogger = {
   child: () => silentLogger,
@@ -216,13 +216,14 @@ const fakeLauncher = {
   join: vi.fn(async () => {}),
 };
 
-function codexStatus(connected: boolean): CodexSubscriptionStatus {
+function runtimeStatusFixture(connected: boolean): RuntimeStatus {
   return {
+    provider: "claude",
     connected,
     reason: connected
-      ? "OpenAI ChatGPT subscription auth is ready for Codex agent runs."
-      : "Codex subscription auth is not connected for this workspace yet.",
-    selectedHarness: "codex",
+      ? "Claude subscription auth is connected and ready for agent runs."
+      : "Claude is not connected for this workspace yet.",
+    selectedHarness: "claude-code",
     userAuthenticated: true,
     workspaceAuthenticated: true,
     runtimeAuth: connected ? "signed_in_subscription" : "missing",
@@ -231,9 +232,9 @@ function codexStatus(connected: boolean): CodexSubscriptionStatus {
   };
 }
 
-const codexSubscription: CodexSubscriptionStatusProvider = {
+const runtimeStatus: RuntimeStatusProvider = {
   async status() {
-    return codexStatus(codexConnected);
+    return runtimeStatusFixture(runtimeConnected);
   },
 };
 
@@ -254,7 +255,7 @@ function buildTelegramTestApp(service: TelegramRoomService): FastifyInstance {
   return buildApp({
     telegram: service,
     teamCoordinator: createTeamCoordinator(),
-    codexSubscription,
+    runtimeStatus,
   });
 }
 
@@ -293,7 +294,7 @@ afterEach(() => {
   fakeLauncher.launch.mockClear();
   fakeLauncher.join.mockClear();
   teamLaunches.length = 0;
-  codexConnected = false;
+  runtimeConnected = false;
   restoreExternalRoomMirror();
 });
 
@@ -751,7 +752,7 @@ describe("Telegram room bridge (#1267)", () => {
     expect(inbound.statusCode).toBe(202);
     expect(inbound.json()).toMatchObject({
       status: "blocked_auth",
-      codexStatus: { runtimeAuth: "missing" },
+      runtimeStatus: { runtimeAuth: "missing" },
       providerReply: { status: "sent", chatId: "223344" },
     });
     expect(fakeLauncher.launch).not.toHaveBeenCalled();
@@ -837,7 +838,7 @@ describe("Telegram room bridge (#1267)", () => {
   });
 
   it("lets a first inbound Telegram message start the Codex marketing team room once (#1423)", async () => {
-    codexConnected = true;
+    runtimeConnected = true;
     const owner = await newOwner();
     const enable = await app.inject({
       method: "POST",
@@ -876,7 +877,7 @@ describe("Telegram room bridge (#1267)", () => {
     await waitForLaunches(5);
     await expectNoSendContaining("started:");
     expect(new Set(teamLaunches.map((launch) => launch.teamRunId))).toEqual(new Set([first.json().teamRunId]));
-    expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex", "codex"]);
+    expect(teamLaunches.map((launch) => launch.harness)).toEqual(["claude-code", "claude-code", "claude-code", "claude-code", "claude-code"]);
     expect((await listChannelMessages(first.json().channelId)).map((m) => m.body)).toContain("market ipop.ai");
 
     const duplicate = await app.inject({

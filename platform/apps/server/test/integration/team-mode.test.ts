@@ -71,7 +71,24 @@ async function startApp(
     maxConcurrency,
     logger: silentLogger,
   });
-  const app = buildApp({ sessionManager: manager, teamCoordinator: coordinator, codexSubscription });
+  // #1568: the status endpoints serve the provider-agnostic runtime status. These Codex-path tests
+  // inject the codex doctor fixture as BOTH the codex gate source and the provider-level status, so
+  // they keep exercising the legacy Codex posture end-to-end.
+  const app = buildApp({
+    sessionManager: manager,
+    teamCoordinator: coordinator,
+    codexSubscription,
+    ...(codexSubscription
+      ? {
+          runtimeStatus: {
+            status: async (workspaceId: string, memberId: string) => ({
+              ...(await codexSubscription.status(workspaceId, memberId)),
+              provider: "codex" as const,
+            }),
+          },
+        }
+      : {}),
+  });
   apps.push(app);
   await app.listen({ port: 0, host: "127.0.0.1" });
   const { port } = app.server.address() as AddressInfo;
