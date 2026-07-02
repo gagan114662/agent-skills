@@ -48,7 +48,8 @@ const TEXT_EXTENSIONS = new Set([
 const selectors = [
   {
     id: "route-declaration",
-    description: "Fastify route declarations and route-table registration points",
+    description:
+      "Fastify route declarations and route-table registration points",
     patterns: [
       /\bapp\.(?:get|post|put|patch|delete)\s*\(/,
       /\bserver\.(?:get|post|put|patch|delete)\s*\(/,
@@ -82,7 +83,8 @@ const selectors = [
   },
   {
     id: "ssrf-url-parse",
-    description: "URL parsing, hostname validation, DNS resolution, and redirect handling",
+    description:
+      "URL parsing, hostname validation, DNS resolution, and redirect handling",
     patterns: [
       /\bnew URL\s*\(/,
       /\.hostname\b|\bhostname\b/,
@@ -90,6 +92,44 @@ const selectors = [
       /\bredirect\b|\blocation\b/i,
       /\bhttp:\b|\bhttps:\b/,
       /\bisIP\s*\(/,
+    ],
+  },
+  {
+    id: "dns-rebinding-pin",
+    description:
+      "Validation-to-fetch DNS pinning for user-controlled public web requests",
+    patterns: [
+      /\bValidatedPublicWebUrl\b/,
+      /\bvalidatePublicWebUrl\b/,
+      /\bfetchPinnedPublicWebUrl\b/,
+      /\bcreatePinnedPublicWeb(?:Lookup|Dispatcher)\b/,
+      /\bundici\b/,
+      /\blookup\s*:/,
+      /\bDNS rebinding\b/i,
+    ],
+  },
+  {
+    id: "nat64-bypass",
+    description: "NAT64 and embedded-IPv4 IPv6 address checks",
+    patterns: [
+      /\bNAT64\b/i,
+      /64:ff9b/i,
+      /\bnat64Mapped\b/,
+      /\bipv4Mapped\b|\bipv4Compatible\b/,
+      /\bembedded\b.*\bIPv4\b/i,
+    ],
+  },
+  {
+    id: "unbounded-buffering",
+    description:
+      "Response-body buffering and byte-limit enforcement before reading remote bodies",
+    patterns: [
+      /\.text\s*\(\s*\)/,
+      /\.arrayBuffer\s*\(/,
+      /\bgetReader\s*\(/,
+      /\bcontent-length\b/i,
+      /\bMAX_(?:PAGE|HTML)_BYTES\b/,
+      /\breadPublicWebResponseText\b/,
     ],
   },
   {
@@ -118,7 +158,8 @@ const selectors = [
   },
   {
     id: "secret-env",
-    description: "Secrets, tokens, passwords, keys, connection strings, and env fallbacks",
+    description:
+      "Secrets, tokens, passwords, keys, connection strings, and env fallbacks",
     patterns: [
       /\bprocess\.env\b/,
       /\b(?:TOKEN|SECRET|PASSWORD|PRIVATE_KEY|API_KEY|DATABASE_URL|REDIS_URL)\b/,
@@ -149,9 +190,7 @@ const selectors = [
   {
     id: "console-log",
     description: "Server-side console logging that may leak sensitive data",
-    patterns: [
-      /\bconsole\.(?:log|warn|error|info|debug)\s*\(/,
-    ],
+    patterns: [/\bconsole\.(?:log|warn|error|info|debug)\s*\(/],
   },
 ];
 
@@ -172,7 +211,8 @@ function walk(dir, out = []) {
 
 function isTextCandidate(file) {
   if (EXCLUDED_FILES.has(file.rel)) return false;
-  if (file.rel.includes("/fixtures/") || file.rel.includes("/__snapshots__/")) return false;
+  if (file.rel.includes("/fixtures/") || file.rel.includes("/__snapshots__/"))
+    return false;
   const ext = path.extname(file.rel);
   return TEXT_EXTENSIONS.has(ext) || file.rel.endsWith(".env.example");
 }
@@ -194,7 +234,12 @@ function areaFor(rel) {
   if (rel.startsWith("platform/")) return "platform/other";
   if (rel.startsWith(".github/")) return ".github";
   if (rel.startsWith("scripts/")) return "scripts";
-  if (rel.startsWith("skills/") || rel.startsWith("agents/") || rel.startsWith(".claude/") || rel.startsWith(".gemini/")) {
+  if (
+    rel.startsWith("skills/") ||
+    rel.startsWith("agents/") ||
+    rel.startsWith(".claude/") ||
+    rel.startsWith(".gemini/")
+  ) {
     return "agent-instructions";
   }
   return "repo-docs-config";
@@ -228,7 +273,9 @@ function batchSignals(signals) {
   }
 
   const batches = [];
-  for (const [area, areaSignals] of [...byArea.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [area, areaSignals] of [...byArea.entries()].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
     const byFile = new Map();
     for (const signal of areaSignals) {
       if (!byFile.has(signal.path)) byFile.set(signal.path, []);
@@ -237,17 +284,32 @@ function batchSignals(signals) {
 
     let current = [];
     let batchIndex = 1;
-    for (const [filePath, fileSignals] of [...byFile.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [filePath, fileSignals] of [...byFile.entries()].sort(
+      ([a], [b]) => a.localeCompare(b),
+    )) {
       void filePath;
-      if (current.length > 0 && current.length + fileSignals.length > MAX_BATCH_SIGNALS) {
-        batches.push({ id: area + "#" + batchIndex, area, signalCount: current.length, signals: current });
+      if (
+        current.length > 0 &&
+        current.length + fileSignals.length > MAX_BATCH_SIGNALS
+      ) {
+        batches.push({
+          id: area + "#" + batchIndex,
+          area,
+          signalCount: current.length,
+          signals: current,
+        });
         batchIndex += 1;
         current = [];
       }
       current.push(...fileSignals);
     }
     if (current.length > 0) {
-      batches.push({ id: area + "#" + batchIndex, area, signalCount: current.length, signals: current });
+      batches.push({
+        id: area + "#" + batchIndex,
+        area,
+        signalCount: current.length,
+        signals: current,
+      });
     }
   }
   return batches;
@@ -274,7 +336,11 @@ const selectorCounts = selectors.map((selector) => ({
   id: selector.id,
   description: selector.description,
   signals: signals.filter((signal) => signal.selector === selector.id).length,
-  files: new Set(signals.filter((signal) => signal.selector === selector.id).map((signal) => signal.path)).size,
+  files: new Set(
+    signals
+      .filter((signal) => signal.selector === selector.id)
+      .map((signal) => signal.path),
+  ).size,
 }));
 
 const batches = batchSignals(signals);

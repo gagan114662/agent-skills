@@ -27,18 +27,21 @@ Selectors are intentionally lexical and deterministic so the scan is reproducibl
 Each match emits a signal containing \`selector\`, \`path\`, \`line\`, and an evidence snippet. Non-matching files are
 dropped before the map stage.
 
-| Selector | Pattern family | Security question |
-| --- | --- | --- |
-| \`route-declaration\` | Fastify \`app.get/post/put/patch/delete\` and \`.route(\` | Does the route have the intended public/auth/tenant boundary? |
-| \`auth-boundary\` | \`requireIdentity\`, \`assertWorkspace\`, auth cookies/tokens | Are authenticated and tenant-scoped paths guarded consistently? |
-| \`outbound-fetch\` | \`fetch(\`, provider HTTP calls, URL construction | Can user input influence outbound hosts, redirects, or ports? |
-| \`ssrf-url-parse\` | \`new URL\`, hostname parsing, DNS lookup, redirect handling | Are URL fetches normalized and checked before network access? |
-| \`deserialization\` | \`JSON.parse\`, YAML/deserialization entry points | Is untrusted structured input bounded and validated after parse? |
-| \`dangerous-api\` | \`spawn\`, \`exec\`, \`eval\`, \`new Function\`, dynamic import-like execution | Can attacker-controlled input reach process execution or code execution? |
-| \`secret-env\` | \`process.env\`, token/key/secret/password vars, connection strings | Are secrets required in production and kept out of responses/logs? |
-| \`approval-gate\` | approval action names and executor registration | Are send/spend/deploy actions still parked behind human approval? |
-| \`cors-origin\` | CORS origin and public app origin handling | Are browser-origin boundaries permissive only in safe contexts? |
-| \`console-log\` | server \`console.log/warn/error\` | Do logs risk leaking tokens or user content? |
+| Selector                | Pattern family                                                                             | Security question                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| \`route-declaration\`   | Fastify \`app.get/post/put/patch/delete\` and \`.route(\`                                  | Does the route have the intended public/auth/tenant boundary?                             |
+| \`auth-boundary\`       | \`requireIdentity\`, \`assertWorkspace\`, auth cookies/tokens                              | Are authenticated and tenant-scoped paths guarded consistently?                           |
+| \`outbound-fetch\`      | \`fetch(\`, provider HTTP calls, URL construction                                          | Can user input influence outbound hosts, redirects, or ports?                             |
+| \`ssrf-url-parse\`      | \`new URL\`, hostname parsing, DNS lookup, redirect handling                               | Are URL fetches normalized and checked before network access?                             |
+| \`dns-rebinding-pin\`   | validated public URL targets, custom \`dispatcher\`/\`lookup\`/\`connect\` controls        | Does the actual socket use the same IP address that URL validation approved?              |
+| \`nat64-bypass\`        | NAT64 \`64:ff9b::/96\`, IPv4-mapped/compatible IPv6, embedded IPv4 extraction              | Do IPv6 forms that tunnel IPv4 still pass through the IPv4 private/reserved range checks? |
+| \`unbounded-buffering\` | \`res.text()\`, \`arrayBuffer()\`, \`getReader()\`, \`content-length\`, response byte caps | Are remote response bodies capped before buffering so crawlers cannot OOM the server?     |
+| \`deserialization\`     | \`JSON.parse\`, YAML/deserialization entry points                                          | Is untrusted structured input bounded and validated after parse?                          |
+| \`dangerous-api\`       | \`spawn\`, \`exec\`, \`eval\`, \`new Function\`, dynamic import-like execution             | Can attacker-controlled input reach process execution or code execution?                  |
+| \`secret-env\`          | \`process.env\`, token/key/secret/password vars, connection strings                        | Are secrets required in production and kept out of responses/logs?                        |
+| \`approval-gate\`       | approval action names and executor registration                                            | Are send/spend/deploy actions still parked behind human approval?                         |
+| \`cors-origin\`         | CORS origin and public app origin handling                                                 | Are browser-origin boundaries permissive only in safe contexts?                           |
+| \`console-log\`         | server \`console.log/warn/error\`                                                          | Do logs risk leaking tokens or user content?                                              |
 
 ## Map False-Positive Gate
 
