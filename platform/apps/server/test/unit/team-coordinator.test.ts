@@ -1155,6 +1155,97 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     ]);
   });
 
+  it("surfaces a queued subtask stuck past the watchdog window from its queued timestamp (#1536)", async () => {
+    const { channel } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher: new FakeLauncher(),
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+    });
+    await channel.postEvent({
+      workspaceId: "ws_1",
+      channelId: "ch_1",
+      event: {
+        teamRunId: "run_1",
+        subtaskId: "quill",
+        agentMemberId: "mem_quill",
+        kind: "queued",
+        summary: "queued: Quill creative platform",
+        branch: "b-quill",
+        createdAt: "2026-06-08T00:00:00.000Z",
+      },
+    });
+
+    const timeline = await coordinator.timeline("ch_1", "run_1", {
+      nowMs: Date.parse("2026-06-08T00:02:01.000Z"),
+      stuckAfterMs: 60_000,
+    });
+
+    expect(timeline.state).toBe("queued");
+    expect(timeline.alerts).toEqual([
+      expect.objectContaining({
+        kind: "dead_run",
+        subtaskId: "quill",
+        state: "queued",
+        reason: "run is still queued past its watchdog window",
+        blockedForMs: 121_000,
+        pageOwner: true,
+      }),
+    ]);
+  });
+
+  it("does not enqueue duplicate derived brand voice events while one is pending (#1536)", async () => {
+    const posted: { body: string }[] = [{ body: encodeTeamEvent(scoutResearchEvent) }];
+    let brandVoiceAttempts = 0;
+    const channel = new TeamChannel({
+      poster: {
+        post: async (input) => {
+          if (input.body.includes('"kind":"brand_voice"')) {
+            brandVoiceAttempts += 1;
+            throw new Error("channel temporarily down for brand voice");
+          }
+          posted.push({ body: input.body });
+          return { id: "m" + posted.length };
+        },
+      },
+      publish: () => Promise.resolve(),
+      listMessages: () => Promise.resolve(posted),
+    });
+    const launcher: TeamLauncher = {
+      launch: async () => ({ id: "scout-session" }),
+      join: async () => new Promise(() => {}),
+      cancel: async () => true,
+    };
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => new Date(Date.UTC(2026, 5, 8, 0, 0, posted.length)).toISOString(),
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "scout",
+          agentMemberId: "mem_scout",
+          task: "research acme.test",
+          branch: "b-scout",
+          producesArtifacts: ["scout_research", "brand_voice"],
+          timeoutMs: 350,
+          maxAttempts: 1,
+        },
+      ],
+    });
+
+    expect(result.results[0]).toMatchObject({ ok: false });
+    expect(brandVoiceAttempts).toBeLessThanOrEqual(2);
+    expect(posted.map((item) => tryParseTeamEvent(item.body)).filter((event): event is TeamEvent => !!event))
+      .toContainEqual(expect.objectContaining({ subtaskId: "scout", kind: "blocked" }));
+  });
+
   it("threads teamRunId + parentSpanId into each launch (observability linkage)", async () => {
     const launcher = new FakeLauncher();
     const { channel } = makeChannel();

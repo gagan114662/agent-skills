@@ -243,7 +243,7 @@ function deriveBrandVoiceFromResearch(
   const tone = compactArtifactText(research.toneNotes, "Plain, specific, proof-led.");
   const positioning = compactArtifactText(research.positioning, "Turn observed proof into a clear next step.");
   const icp = compactArtifactText(research.icp, "the specific buyer named in Scout research");
-  const proof = compactArtifactText(research.proofPoints[0] ?? "", positioning);
+  const proof = compactArtifactText(research.proofPoints?.[0] ?? "", positioning);
   return {
     kind: "brand_voice",
     schemaVersion: 1,
@@ -350,14 +350,16 @@ export function buildTeamRunTimeline(
   const stuckAfterMs = opts.stuckAfterMs ?? DEFAULT_STUCK_AFTER_MS;
   const alerts = subtasks.flatMap<TeamRunTimelineAlert>((subtask) => {
     if (subtask.state === "running" || subtask.state === "queued") {
-      const started = isoMs(subtask.startedAt);
-      if (started === null || nowMs - started < stuckAfterMs) return [];
+      const referenceTime = subtask.state === "running"
+        ? isoMs(subtask.startedAt)
+        : isoMs(subtask.events.find((event) => event.kind === "queued")?.createdAt ?? null);
+      if (referenceTime === null || nowMs - referenceTime < stuckAfterMs) return [];
       return [{
         kind: "dead_run",
         subtaskId: subtask.subtaskId,
         state: subtask.state,
         reason: "run is still " + subtask.state + " past its watchdog window",
-        blockedForMs: nowMs - started,
+        blockedForMs: nowMs - referenceTime,
         pageOwner: true,
       }];
     }
@@ -628,6 +630,10 @@ export class TeamCoordinator {
     return this.deps.channel.readRecentEvents(channelId, opts);
   }
 
+  private readPersistedEvents(channelId: string, opts?: { limit?: number }): Promise<TeamEvent[]> {
+    return this.deps.channel.readRecentEvents(channelId, opts);
+  }
+
   async timeline(
     channelId: string,
     teamRunId: string,
@@ -694,12 +700,19 @@ export class TeamCoordinator {
         lastSessionId = sessionId;
         const remainingTimeoutMs = timeoutMs === null ? null : Math.max(1, timeoutMs - (Date.now() - startedMs));
         let stopArtifactWait = false;
-        const joinPromise = this.withTimeout(this.deps.launcher.join(sessionId), remainingTimeoutMs).then(
-          () => "joined" as const,
-        );
+        const joinPromise = this.withTimeout(this.deps.launcher.join(sessionId), remainingTimeoutMs)
+          .then(() => "joined" as const)
+          .catch((err) => {
+            if (stopArtifactWait) return "joined" as const;
+            throw err;
+          });
         const artifactPromise = uniqueArtifactKinds(subtask.producesArtifacts).length > 0
           ? this.waitForProducedArtifacts(input, subtask, remainingTimeoutMs, () => stopArtifactWait)
               .then(() => "artifacts" as const)
+              .catch((err) => {
+                if (stopArtifactWait) return "artifacts" as const;
+                throw err;
+              })
           : null;
         const completion = artifactPromise ? await Promise.race([joinPromise, artifactPromise]) : await joinPromise;
         stopArtifactWait = true;
@@ -872,11 +885,12 @@ export class TeamCoordinator {
   private async missingProducedArtifacts(input: TeamRunInput, subtask: Subtask): Promise<TeamArtifactKind[]> {
     const producedKinds = uniqueArtifactKinds(subtask.producesArtifacts);
     if (producedKinds.length === 0) return [];
-    let events = await this.readEvents(input.channelId, { limit: 200 });
+    let events = await this.readPersistedEvents(input.channelId, { limit: 200 });
     if (producedKinds.includes("brand_voice") && producedKinds.includes("scout_research")) {
       const hasBrandVoice = latestArtifact(events, input, subtask, "brand_voice");
       const research = latestArtifact(events, input, subtask, "scout_research");
-      if (!hasBrandVoice && research) {
+      const isBrandVoicePending = this.hasPendingArtifact(input, subtask, "brand_voice");
+      if (!hasBrandVoice && research && !isBrandVoicePending) {
         await this.announce(
           input,
           subtask,
@@ -885,7 +899,7 @@ export class TeamCoordinator {
           { source: "scout_research" },
           deriveBrandVoiceFromResearch(research),
         );
-        events = await this.readEvents(input.channelId, { limit: 200 });
+        events = await this.readPersistedEvents(input.channelId, { limit: 200 });
       }
     }
     return producedKinds.filter(
@@ -896,6 +910,16 @@ export class TeamCoordinator {
             event.subtaskId === subtask.subtaskId &&
             event.artifact?.kind === kind,
         ),
+    );
+  }
+
+  private hasPendingArtifact(input: TeamRunInput, subtask: Subtask, kind: TeamArtifactKind): boolean {
+    return this.pendingAnnouncements.some(
+      (pending) =>
+        pending.channelId === input.channelId &&
+        pending.event.teamRunId === input.teamRunId &&
+        pending.event.subtaskId === subtask.subtaskId &&
+        pending.event.artifact?.kind === kind,
     );
   }
 
