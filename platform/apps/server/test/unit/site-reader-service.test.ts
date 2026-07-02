@@ -9,6 +9,7 @@ import {
   createSiteReader,
 } from "../../src/marketing/site-reader/service.js";
 import { composeSiteFactsBlock, type FetchedPage } from "../../src/marketing/site-reader/distill.js";
+import type { HostResolver } from "../../src/security/public-web-url.js";
 
 /**
  * #363 — the IO half of the public-site reader: provider (DryRun default + Live same-origin crawl) and
@@ -30,6 +31,12 @@ function stubFetch(pages: Record<string, { status: number; html: string }>): voi
       return { status: hit.status, text: async () => hit.html } as unknown as Response;
     }),
   );
+}
+
+const publicResolver: HostResolver = async () => [{ address: "93.184.216.34", family: 4 }];
+
+function liveProvider(resolver: HostResolver = publicResolver): LiveSiteReaderProvider {
+  return new LiveSiteReaderProvider(undefined, undefined, resolver);
 }
 
 describe("DryRunSiteReaderProvider (#363 default — reads nothing)", () => {
@@ -54,7 +61,7 @@ describe("LiveSiteReaderProvider (#363 — same-origin read-only crawl)", () => 
       "https://ipop.ai/pricing": { status: 200, html: "<title>Pricing</title>" },
     });
 
-    const pages = await new LiveSiteReaderProvider().fetchPages("https://ipop.ai/");
+    const pages = await liveProvider().fetchPages("https://ipop.ai/");
     const urls = pages.map((p) => p.url);
     expect(urls).toContain("https://ipop.ai/");
     expect(urls).toContain("https://ipop.ai/pricing");
@@ -63,8 +70,48 @@ describe("LiveSiteReaderProvider (#363 — same-origin read-only crawl)", () => 
 
   it("refuses a non-http(s) seed (returns nothing)", async () => {
     stubFetch({});
-    const pages = await new LiveSiteReaderProvider().fetchPages("file:///etc/passwd");
+    const pages = await liveProvider().fetchPages("file:///etc/passwd");
     expect(pages).toEqual([]);
+  });
+
+  it("refuses private DNS answers before fetching a seed", async () => {
+    const fetchImpl = vi.fn();
+    vi.stubGlobal("fetch", fetchImpl);
+    const privateResolver: HostResolver = async () => [{ address: "10.0.0.8", family: 4 }];
+
+    const pages = await liveProvider(privateResolver).fetchPages("https://private.example/");
+
+    expect(pages).toEqual([]);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses hex, abbreviated, and non-standard-port numeric seeds before fetching", async () => {
+    const fetchImpl = vi.fn();
+    vi.stubGlobal("fetch", fetchImpl);
+    const provider = liveProvider();
+
+    await expect(provider.fetchPages("http://2130706433/")).resolves.toEqual([]);
+    await expect(provider.fetchPages("http://0x7f000001/")).resolves.toEqual([]);
+    await expect(provider.fetchPages("http://127.1/")).resolves.toEqual([]);
+    await expect(provider.fetchPages("https://example.com:8443/")).resolves.toEqual([]);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("validates redirect hops and blocks private redirect destinations", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      return new Response(null, { status: 302, headers: { location: "http://private.example/admin" } });
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    const resolver: HostResolver = async (hostname) =>
+      hostname === "private.example"
+        ? [{ address: "169.254.169.254", family: 4 }]
+        : [{ address: "93.184.216.34", family: 4 }];
+
+    const pages = await liveProvider(resolver).fetchPages("https://ipop.ai/");
+
+    expect(pages).toEqual([]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith("https://ipop.ai/", expect.objectContaining({ redirect: "manual" }));
   });
 
   it("skips a page whose fetch throws, never failing the whole crawl", async () => {
@@ -72,7 +119,7 @@ describe("LiveSiteReaderProvider (#363 — same-origin read-only crawl)", () => 
     stubFetch({
       "https://ipop.ai/": { status: 200, html: '<title>Home</title><a href="/a">A</a>' },
     });
-    const pages = await new LiveSiteReaderProvider().fetchPages("https://ipop.ai/");
+    const pages = await liveProvider().fetchPages("https://ipop.ai/");
     expect(pages.map((p) => p.url)).toEqual(["https://ipop.ai/"]);
   });
 });

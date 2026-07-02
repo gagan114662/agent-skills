@@ -7,9 +7,9 @@ import {
   parseSiteSnapshot,
   planToFrames,
   readSiteSnapshot,
-  type HostResolver,
   type SiteSnapshot,
 } from "../../src/onboarding/deliverable.js";
+import type { HostResolver } from "../../src/security/public-web-url.js";
 
 /**
  * Unit test for the #633 outcome-first deliverable generator. It must turn an untrusted typed URL into a
@@ -40,6 +40,9 @@ describe("deriveBusiness (#633)", () => {
     expect(deriveBusiness(42)).toBeNull();
     expect(deriveBusiness("localhost")).toBeNull(); // no dot → not a domain
     expect(deriveBusiness("127.0.0.1")).toBeNull();
+    expect(deriveBusiness("http://2130706433")).toBeNull();
+    expect(deriveBusiness("http://0x7f000001")).toBeNull();
+    expect(deriveBusiness("http://127.1")).toBeNull();
     expect(deriveBusiness("not a domain")).toBeNull();
     expect(deriveBusiness("javascript:alert(1)")).toBeNull();
     expect(deriveBusiness("file:///etc/passwd")).toBeNull();
@@ -113,6 +116,27 @@ describe("readSiteSnapshot SSRF guard (#1530)", () => {
 
     await expect(
       readSiteSnapshot({ url: "http://private.example", host: "private.example", name: "Private" }, fetchImpl, resolver),
+    ).resolves.toBeNull();
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["0/8", "0.1.2.3", 4],
+    ["10/8", "10.2.3.4", 4],
+    ["127/8", "127.10.20.30", 4],
+    ["172.16/12", "172.20.1.1", 4],
+    ["192.168/16", "192.168.1.10", 4],
+    ["169.254/16 metadata", "169.254.169.254", 4],
+    ["IPv6 loopback", "::1", 6],
+    ["IPv6 unique local", "fc00::1", 6],
+    ["IPv6 mapped metadata", "::ffff:169.254.169.254", 6],
+  ])("blocks %s DNS answers before fetching", async (_label, address, family) => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const resolver: HostResolver = async () => [{ address: String(address), family: Number(family) }];
+
+    await expect(
+      readSiteSnapshot({ url: "https://public.example", host: "public.example", name: "Public" }, fetchImpl, resolver),
     ).resolves.toBeNull();
 
     expect(fetchImpl).not.toHaveBeenCalled();
