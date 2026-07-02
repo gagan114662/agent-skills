@@ -22,6 +22,11 @@ import {
 } from "../onboarding/first-run-receipt.js";
 import { EverydayShell, type EverydayRoomLaunchResult, type EverydayShellTheme } from "./EverydayShell.js";
 import {
+  customerVisibleAgentText,
+  parseTeamEvent,
+  teamEventFriendlyLine,
+} from "./everyday-agent-text.js";
+import {
   defaultConnectors,
   emptyEverydayData,
   type AgentLane,
@@ -34,7 +39,6 @@ import {
 } from "./everyday-data.js";
 
 const STARTER_AGENT_SEAT_LIMIT = 5;
-const TEAM_EVENT_MARKER = "::team-event::";
 
 function navigateToTelegramStart(link: Awaited<ReturnType<typeof api.startTelegramConnection>>): void {
   if (link.startUrl) {
@@ -78,14 +82,7 @@ function approvalCard(request: ApprovalRequestDto, state: AppState): ApprovalCar
 }
 
 function parseTeamEventMessage(message: Message): TeamEvent | null {
-  const body = message.body;
-  if (!body?.startsWith(TEAM_EVENT_MARKER)) return null;
-  try {
-    const parsed = JSON.parse(body.slice(TEAM_EVENT_MARKER.length).trim()) as TeamEvent;
-    return parsed && typeof parsed.summary === "string" ? parsed : null;
-  } catch {
-    return null;
-  }
+  return parseTeamEvent(message.body);
 }
 
 function draftText(draft: MarketingDraft): string {
@@ -127,7 +124,7 @@ function teamEventThreadEntry(
     kind: "agent-line",
     agent,
     at: index === visibleCount - 1 ? "latest" : "workspace",
-    text: event.summary,
+    text: teamEventFriendlyLine(event),
   };
 }
 
@@ -143,7 +140,9 @@ function threadEntries(state: AppState): ThreadEntry[] {
       kind: "agent-line",
       agent: authorLabel(state.directory, message.authorMemberId),
       at: index === visible.length - 1 ? "latest" : "workspace",
-      text: message.body,
+      // Never render a raw body: a malformed team-event blob or a runtime/log line becomes a friendly
+      // brand-voice placeholder; genuine human messages pass through unchanged.
+      text: customerVisibleAgentText(message.body ?? ""),
     };
   });
 }
