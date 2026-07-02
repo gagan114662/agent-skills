@@ -63,6 +63,8 @@ import {
 import { composeSiteFactsBlock } from "./site-reader/distill.js";
 import { LiveSiteReaderProvider } from "./site-reader/provider.js";
 import { createSiteReader, shouldReadSiteContent } from "./site-reader/service.js";
+import { createAwardTransferService, shouldRunAwardTransfer } from "./award-transfer/index.js";
+import { type IndustryCategory } from "./award-transfer/mechanism.js";
 import { createDefaultDecisionService } from "../decisions/default.js";
 import { getWorkspaceOnboarding } from "../db/repositories/workspace-onboarding.js";
 import { postMessage } from "../db/repositories/messages.js";
@@ -107,6 +109,7 @@ export function createWorkspaceTaskEnricher(deps: WorkspaceTaskEnricherDeps = {}
   const siteReader =
     deps.siteReader ?? createSiteReader({ provider: new LiveSiteReaderProvider() });
   const decisionService = deps.decisionService ?? createDefaultDecisionService();
+  const awardTransfer = createAwardTransferService();
   return async (workspaceId: string, task: string): Promise<string> => {
     const marketing = loadConfig(workspaceId).marketing;
     const onboarding = await getWorkspaceOnboarding(workspaceId);
@@ -140,6 +143,24 @@ export function createWorkspaceTaskEnricher(deps: WorkspaceTaskEnricherDeps = {}
       if (block) facts.priorDecisionsBlock = block;
     } catch {
       // Decision recall is best-effort; the typed workspace facts are still enough context.
+    }
+    // #1547: surface cross-industry creative territories to the drafting step (default-OFF, owner-first).
+    // The client's category is coarse-inferred: the owner workspace is a software product; any other
+    // workspace is `other` (distant from every named case category → never rejects a real reference).
+    if (shouldRunAwardTransfer(marketing, workspaceId)) {
+      try {
+        const isOwner = marketing.ownerWorkspaceId === workspaceId;
+        const category: IndustryCategory = isOwner ? "tech-software" : "other";
+        const block = awardTransfer.territoryBriefsBlock({
+          category,
+          product: facts.productName ?? "the product",
+          ...(facts.positioning ? { positioning: facts.positioning } : {}),
+          ...(facts.audience ? { audience: facts.audience } : {}),
+        });
+        if (block) facts.territoryBriefsBlock = block;
+      } catch {
+        // Territory generation is best-effort; a briefed launch never fails on it.
+      }
     }
     return enrichTaskWithContext(task, facts);
   };
