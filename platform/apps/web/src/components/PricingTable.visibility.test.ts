@@ -40,14 +40,33 @@ describe("pricing card visibility (#234/#287 — every tier must render)", () =>
       .not.toMatch(/opacity\s*:\s*0\s*;/);
   });
 
-  it("keeps the pop entrance — the animation pre-fills the hidden start (backwards/both)", () => {
+  it("#1489: the pop entrance leaves NO lingering transform — the CTA hit-box is never displaced", () => {
     const body = popRuleBody();
     const animation = /animation\s*:[^;]*;/.exec(body)?.[0] ?? "";
     expect(animation, "the entrance pop should still be present").toMatch(/pricing-pop/);
-    // `backwards`/`both` makes the card hidden during the pre-animation delay yet visible at rest,
-    // so the pop is preserved without `opacity:0` ever being the resting (un-animated) state.
-    expect(animation, "fill mode must pre-fill the hidden start so the pop survives without gating rest")
-      .toMatch(/\b(backwards|both)\b/);
+    // #321 made the pop a pure transform but kept `fill-mode: both`. That backwards-fills the shrunk,
+    // shifted `0%` keyframe during the staggered `animation-delay`, and strands it there if the entrance
+    // is dropped on an offscreen/async mount. Because a transform moves the hit-test box with the paint,
+    // a stranded 0% transform pushes the CTA's clickable region off its visual spot and the click is
+    // swallowed (the #1489 pricing-CTA dead end). So the fill mode must NOT backwards-fill: no `both`,
+    // no `backwards`.
+    expect(animation, "the pop must not backwards-fill the displaced 0% transform (no both/backwards)")
+      .not.toMatch(/\b(backwards|both)\b/);
+    // …and the card must REST untransformed, so the painted box and the hit-test box coincide.
+    expect(body, "a plan card must rest at transform:none so clicks land on the CTA, not empty space")
+      .toMatch(/transform\s*:\s*none\s*;/);
+  });
+
+  it("#1489: the pop keyframes settle at transform:none — no scale/translate lingers at the end", () => {
+    // Capture the full @keyframes body up to its line-start closing brace (the inner step braces are
+    // indented), so the 100% step and its closing brace are included.
+    const kfBlock = /@keyframes\s+pricing-pop\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
+    expect(kfBlock, "the @keyframes pricing-pop rule must exist").not.toBe("");
+    const finalStep = /100%\s*\{([^}]*)\}/.exec(kfBlock)?.[1] ?? "";
+    expect(finalStep, "the 100% keyframe must resolve to transform:none — no residual scale/translate")
+      .toMatch(/transform\s*:\s*none\s*;/);
+    expect(finalStep, "the final keyframe must not leave a scale() that displaces the hit-box")
+      .not.toMatch(/scale\s*\(/);
   });
 
   it("#321: the pop entrance never drives opacity — a card stays visible even if the animation is dropped", () => {
