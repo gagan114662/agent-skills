@@ -88,7 +88,7 @@ describe("RequestDetail", () => {
     await waitFor(() => expect(container.querySelector(".request-detail")).toBeNull());
   });
 
-  it("lets the reviewer approve or steer from the one-screen detail pane", async () => {
+  it("lets the reviewer approve with inline edits or request changes from the one-screen detail pane", async () => {
     const user = userEvent.setup();
     const { store, approvals } = await renderApprovals(<RequestDetail />, {
       detail: makeRequest({
@@ -111,15 +111,83 @@ describe("RequestDetail", () => {
       "hello from ipop",
     );
     expect(screen.getByText("Scout found a warm lead")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Steer request: Send launch note/ }));
-    const sendSteer = screen.getByRole("button", { name: /Send steer for request: Send launch note/ });
-    expect(sendSteer).toBeDisabled();
-    await user.type(screen.getByLabelText("Steer reason"), "make it shorter");
-    expect(sendSteer).toBeEnabled();
-    await user.click(sendSteer);
-    expect(approvals.reject).toHaveBeenCalledWith("r1", "make it shorter");
+    await user.click(screen.getByRole("button", { name: /Request changes for request: Send launch note/ }));
+    const sendChanges = screen.getByRole("button", { name: /Send request changes for request: Send launch note/ });
+    expect(sendChanges).toBeDisabled();
+    await user.type(screen.getByLabelText("Request changes note"), "make it shorter");
+    expect(sendChanges).toBeEnabled();
+    await user.click(sendChanges);
+    expect(approvals.requestChanges).toHaveBeenCalledWith("r1", "make it shorter");
 
+    await user.clear(screen.getByLabelText("Edit message"));
+    await user.type(screen.getByLabelText("Edit message"), "short hello from ipop");
     await user.click(screen.getByRole("button", { name: /Approve request: Send launch note/ }));
-    expect(approvals.approve).toHaveBeenCalledWith("r1", undefined);
+    expect(approvals.approve).toHaveBeenCalledWith("r1", undefined, {
+      field: "body",
+      value: "short hello from ipop",
+    });
+  });
+
+  it("renders channel-native draft sets side by side and approves the edited packet", async () => {
+    const user = userEvent.setup();
+    const { store, approvals } = await renderApprovals(<RequestDetail />, {
+      detail: makeRequest({
+        id: "r1",
+        actionType: "agent.deliverable",
+        amount: null,
+        summary: "Deliverable ready for review: launch pack",
+        payload: {
+          channelId: "c1",
+          task: "Launch ipop to founders",
+          artifact: {
+            kind: "draft_set",
+            schemaVersion: 1,
+            drafts: [
+              {
+                format: "email",
+                title: "Founder launch email",
+                fields: {
+                  subject: "Your marketing team is waiting",
+                  preheader: "Scout, Quill, Lens, Echo, and Bid are already in the room.",
+                  body: "Give the team a target and review the draft before it ships.",
+                  cta: "Start the room",
+                  plainTextAlt: "Start the room with ipop.",
+                },
+                citations: ["homepage proof"],
+              },
+              {
+                format: "x_thread",
+                title: "Launch thread",
+                fields: {
+                  tweets: [
+                    "Your marketing team should live where you already message.",
+                    "ipop turns Scout, Quill, Lens, Echo, and Bid into one room.",
+                  ],
+                },
+                citations: ["homepage proof"],
+              },
+            ],
+          },
+        },
+      }),
+      events: EVENTS,
+    });
+    await act(async () => {
+      await store.openRequest("r1");
+    });
+
+    expect(await screen.findByText("Email")).toBeInTheDocument();
+    expect(screen.getByText("X thread")).toBeInTheDocument();
+    expect(screen.getByText("Your marketing team is waiting")).toBeInTheDocument();
+    expect(screen.getAllByText(/ipop turns Scout, Quill, Lens, Echo, and Bid into one room/).length).toBeGreaterThan(0);
+
+    await user.clear(screen.getByLabelText("Edit draft"));
+    await user.type(screen.getByLabelText("Edit draft"), "approved multi-channel packet");
+    await user.click(screen.getByRole("button", { name: /Approve request: Deliverable ready for review/ }));
+
+    expect(approvals.approve).toHaveBeenCalledWith("r1", undefined, {
+      field: "draft",
+      value: "approved multi-channel packet",
+    });
   });
 });

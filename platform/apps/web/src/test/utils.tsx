@@ -158,6 +158,11 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
       events: vi.fn(async () => []),
       approve: vi.fn(async (rid: string) => ({ status: "executed" as const, result: {}, request: { ...STUB_REQUEST, id: rid, status: "executed" as const } })),
       reject: vi.fn(async (rid: string, reason: string) => ({ status: "rejected" as const, request: { ...STUB_REQUEST, id: rid, status: "rejected" as const, reason } })),
+      requestChanges: vi.fn(async (rid: string, note: string) => ({
+        status: "rejected" as const,
+        request: { ...STUB_REQUEST, id: rid, status: "rejected" as const, reason: "Request changes: " + note },
+        revisionMessage: { id: "msg-revision", channelId: "ch1" },
+      })),
       listPolicies: vi.fn(async () => [] as ApprovalPolicyDto[]),
       upsertPolicy: vi.fn(async (_w: string, input: { actionType: string }) => ({ ...STUB_POLICY, actionType: input.actionType })),
       deletePolicy: vi.fn(async () => ({ ok: true }) as const),

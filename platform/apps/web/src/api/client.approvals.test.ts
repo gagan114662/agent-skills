@@ -44,12 +44,28 @@ describe("api.approvals", () => {
 
   it("approve posts an optional reason", async () => {
     const fetchMock = stubFetch(200, { status: "executed", result: {}, request: { id: "r1" } });
-    const res = await api.approvals.approve("r1", "looks safe");
+    const res = await api.approvals.approve("r1", "looks safe", { field: "draft", value: "approved copy" });
     const [url, init] = lastCall(fetchMock);
     expect(url).toBe("/approvals/r1/approve");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ reason: "looks safe" });
+    expect(JSON.parse(init.body as string)).toEqual({
+      reason: "looks safe",
+      edit: { field: "draft", value: "approved copy" },
+    });
     expect(res.request.id).toBe("r1");
+  });
+
+  it("requestChanges posts the owner note to the revision endpoint", async () => {
+    const fetchMock = stubFetch(200, {
+      status: "rejected",
+      request: { id: "r1" },
+      revisionMessage: { id: "m1", channelId: "c1" },
+    });
+    await api.approvals.requestChanges("r1", "tighten the CTA");
+    const [url, init] = lastCall(fetchMock);
+    expect(url).toBe("/approvals/r1/request-changes");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ note: "tighten the CTA" });
   });
 
   it("reject posts the required reason", async () => {

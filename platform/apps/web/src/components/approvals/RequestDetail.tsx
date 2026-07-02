@@ -1,11 +1,11 @@
 /** Detail pane for one approval request: its current state plus the audit timeline. Opened from a
  * queue row; rendered when the store has an `activeRequest`. */
-import { useState, type MouseEvent } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { authorLabel } from "../../store/store.js";
 import { popConfetti } from "../../lib/confetti.js";
 import { AuditTimeline } from "./AuditTimeline.js";
-import { approvalReview } from "./approval-review.js";
+import { approvalReview, type ApprovalDraftPreview } from "./approval-review.js";
 
 function rollbackMetadata(result: Record<string, unknown> | null): {
   label: string;
@@ -21,17 +21,83 @@ function rollbackMetadata(result: Record<string, unknown> | null): {
   return status ? { label, status, url } : null;
 }
 
+function DraftCard({ draft }: { draft: ApprovalDraftPreview }): React.JSX.Element {
+  return (
+    <article className={`channel-draft channel-draft--${draft.format}`}>
+      <header className="channel-draft__head">
+        <span className="channel-draft__format">{draft.label}</span>
+        <h5>{draft.title}</h5>
+      </header>
+      <dl className="channel-draft__fields">
+        {draft.sections.map((section) => (
+          <div key={section.label} className="channel-draft__field">
+            <dt>{section.label}</dt>
+            <dd>{section.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {draft.citations.length > 0 && (
+        <p className="channel-draft__citations">Cites {draft.citations.slice(0, 3).join("; ")}</p>
+      )}
+    </article>
+  );
+}
+
+function DraftPreview({ drafts, fallback }: { drafts: ApprovalDraftPreview[]; fallback: string }): React.JSX.Element {
+  if (drafts.length === 0) return <pre>{fallback}</pre>;
+  return (
+    <div className="request-detail__drafts">
+      {drafts.map((draft) => (
+        <DraftCard key={`${draft.format}:${draft.title}`} draft={draft} />
+      ))}
+    </div>
+  );
+}
+
+function normalized(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function hasEdit(original: string, next: string): boolean {
+  return normalized(original) !== normalized(next);
+}
+
+function DraftDiff({ original, edited }: { original: string; edited: string }): React.JSX.Element | null {
+  if (!hasEdit(original, edited)) return null;
+  return (
+    <div className="draft-diff" aria-label="Draft diff">
+      <div className="draft-diff__pane draft-diff__pane--old">
+        <span>Original</span>
+        <p>{original}</p>
+      </div>
+      <div className="draft-diff__pane draft-diff__pane--new">
+        <span>Edited</span>
+        <p>{edited}</p>
+      </div>
+    </div>
+  );
+}
+
 export function RequestDetail(): React.JSX.Element | null {
   const { approvals, directory, identity } = useAppState();
   const store = useStore();
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editValue, setEditValue] = useState("");
   const req = approvals.activeRequest;
-  if (!req) return null;
   const request = req;
 
-  const review = approvalReview(request);
+  const review = request ? approvalReview(request) : null;
+  const editable = review?.editable ?? null;
+  useEffect(() => {
+    setRejecting(false);
+    setReason("");
+    setEditValue(editable?.value ?? "");
+  }, [request?.id, editable?.field, editable?.value]);
+
+  if (!request || !review) return null;
+  const requestId = request.id;
   const rollback = rollbackMetadata(request.result);
   const canDecide =
     identity?.kind === "human" &&
@@ -42,19 +108,22 @@ export function RequestDetail(): React.JSX.Element | null {
     const r = e.currentTarget.getBoundingClientRect();
     setBusy(true);
     try {
-      await store.decideApprove(request.id);
+      const edit = editable && (editable.synthetic || hasEdit(editable.value, editValue))
+        ? { field: editable.field, value: editValue.trim() }
+        : undefined;
+      await store.decideApprove(requestId, undefined, edit);
       popConfetti(r.left + r.width / 2, r.top + r.height / 2);
     } finally {
       setBusy(false);
     }
   }
 
-  async function submitReject(): Promise<void> {
+  async function submitRequestChanges(): Promise<void> {
     const note = reason.trim();
     if (!note) return;
     setBusy(true);
     try {
-      await store.decideReject(request.id, note);
+      await store.decideRequestChanges(requestId, note);
       setRejecting(false);
       setReason("");
     } finally {
@@ -122,8 +191,22 @@ export function RequestDetail(): React.JSX.Element | null {
       <section className="request-detail__preview" aria-label="Exactly what will ship">
         <p className="request-detail__eyebrow">Exactly what will ship</p>
         <h4>{review.previewTitle}</h4>
-        <pre>{review.previewBody}</pre>
+        <DraftPreview drafts={review.drafts} fallback={review.previewBody} />
       </section>
+
+      {canDecide && editable && (
+        <section className="request-detail__edit" aria-label="Inline edit">
+          <label htmlFor={`approval-edit-${request.id}`}>Inline edit</label>
+          <textarea
+            id={`approval-edit-${request.id}`}
+            className="request-detail__editbox"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            aria-label={`Edit ${editable.label.toLowerCase()}`}
+          />
+          <DraftDiff original={editable.value} edited={editValue} />
+        </section>
+      )}
 
       <section className="request-detail__decision" aria-label="Approval decision">
         <dl>
@@ -142,14 +225,14 @@ export function RequestDetail(): React.JSX.Element | null {
                 className="request-detail__reject"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void submitReject();
+                  void submitRequestChanges();
                 }}
               >
                 <textarea
                   autoFocus
                   className="request-detail__reason"
                   placeholder="What should change?"
-                  aria-label="Steer reason"
+                  aria-label="Request changes note"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                 />
@@ -157,9 +240,9 @@ export function RequestDetail(): React.JSX.Element | null {
                   type="submit"
                   className="btn btn--danger"
                   disabled={busy || !reason.trim()}
-                  aria-label={`Send steer for request: ${request.summary}`}
+                  aria-label={`Send request changes for request: ${request.summary}`}
                 >
-                  Send steer
+                  Send to Quill
                 </button>
                 <button
                   type="button"
@@ -177,20 +260,24 @@ export function RequestDetail(): React.JSX.Element | null {
                 <button
                   type="button"
                   className="btn btn--primary"
-                  disabled={busy}
+                  disabled={busy || (!!editable && editValue.trim().length === 0)}
                   aria-label={`Approve request: ${request.summary}`}
                   onClick={(e) => void approve(e)}
                 >
-                  Approve
+                  {editable && hasEdit(editable.value, editValue)
+                    ? "Approve edited draft"
+                    : review.drafts.length > 1
+                      ? "Approve all drafts"
+                      : "Approve"}
                 </button>
                 <button
                   type="button"
                   className="btn btn--ghost"
                   disabled={busy}
-                  aria-label={`Steer request: ${request.summary}`}
+                  aria-label={`Request changes for request: ${request.summary}`}
                   onClick={() => setRejecting(true)}
                 >
-                  Steer
+                  Request changes
                 </button>
               </>
             )}

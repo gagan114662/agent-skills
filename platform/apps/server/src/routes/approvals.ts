@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requireIdentity, assertWorkspace } from "../auth/guard.js";
-import { requireApprovalInWorkspace } from "../auth/access.js";
+import { requireApprovalInWorkspace, requireChannelCapability } from "../auth/access.js";
 import type { Identity } from "../auth/identity.js";
 import { loadEnv } from "../env.js";
 import { loadConfig } from "../config/loader.js";
@@ -22,6 +22,8 @@ import { executeApprovedRequest, type ApprovalExecutionOutcome } from "../approv
 import type { ExecutorRegistry } from "../approvals/executor.js";
 import { recordAsyncSideEffectFailure } from "../observability/metrics.js";
 import { getWorkspaceTimeZone } from "../db/repositories/workspaces.js";
+import { postMessage } from "../db/repositories/messages.js";
+import { deliverPostedMessage } from "../messaging/delivery.js";
 import {
   checkApprovalQueueQuota,
   type ApprovalQueueQuotaReaders,
@@ -101,6 +103,42 @@ export function parseApprovalEdit(
     return { ok: false, error: "edit.value must be at most " + MAX_APPROVAL_EDIT_VALUE_LENGTH + " characters" };
   }
   return { ok: true, value: { field, value } };
+}
+
+const REQUEST_CHANGES_NOTE_MAX = 1_200;
+const DELIVERABLE_ACTION = "agent.deliverable";
+
+function parseRequestChangesNote(note: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  if (typeof note !== "string" || !note.trim()) return { ok: false, error: "note is required" };
+  const value = note.trim();
+  if (value.length > REQUEST_CHANGES_NOTE_MAX) {
+    return { ok: false, error: "note must be at most " + REQUEST_CHANGES_NOTE_MAX + " characters" };
+  }
+  return { ok: true, value };
+}
+
+function stringPayloadField(payload: Record<string, unknown>, key: string): string | null {
+  const value = payload[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function deliverableRevisionChannelId(request: ApprovalRequest): string | null {
+  if (request.actionType !== DELIVERABLE_ACTION) return null;
+  return stringPayloadField(request.payload as Record<string, unknown>, "channelId");
+}
+
+function deliverableRevisionBody(request: ApprovalRequest, note: string): string {
+  const payload = request.payload as Record<string, unknown>;
+  const task = stringPayloadField(payload, "task") ?? request.summary;
+  return [
+    "@quill request changes",
+    "",
+    "Approval: " + request.id,
+    "Owner note: " + note,
+    "",
+    "Revise this draft and return a new approval-ready version in the room.",
+    "Original brief: " + task.slice(0, 500),
+  ].join("\n");
 }
 
 function rollbackStatusForPolicySimulation(actionType: string): string {
@@ -610,6 +648,66 @@ export async function approvalRoutes(
     req.log.info(approvalDecisionLog(decision.request, "rejected"), "approval decision recorded");
     await broadcastApprovalCompletion(req.log, decision.request, id.memberId, "rejected");
     return reply.code(200).send({ status: "rejected", request: approvalRequestView(decision.request) });
+  });
+
+  app.post("/approvals/:rid/request-changes", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { rid } = req.params as { rid: string };
+    const request = await requireApprovalInWorkspace(id, rid, reply);
+    if (!request) return;
+    if (!requireHuman(id, reply)) return;
+    if (!(await requireCanClear(id, reply))) return;
+    const note = parseRequestChangesNote((req.body as { note?: unknown })?.note);
+    if (!note.ok) return reply.code(400).send({ error: note.error });
+
+    const revisionChannelId = deliverableRevisionChannelId(request);
+    const revisionChannel = revisionChannelId
+      ? await requireChannelCapability(id, revisionChannelId, "write", reply)
+      : undefined;
+    if (revisionChannelId && !revisionChannel) return;
+    if (revisionChannel?.isArchived) return reply.code(409).send({ error: "channel is archived" });
+
+    const reason = "Request changes: " + note.value;
+    const decision = await rejectRequest(rid, id.workspaceId, id.memberId, reason);
+    if (decision.outcome === "conflict") {
+      return reply.code(409).send(approvalConflict("request already decided", request));
+    }
+    if (decision.outcome === "expired") {
+      req.log.info(approvalDecisionLog(decision.request, "expired"), "approval request expired before decision");
+      return reply.code(409).send({
+        status: "expired",
+        error: "request expired",
+        request: approvalRequestView(decision.request),
+      });
+    }
+
+    let revisionMessage: { id: string; channelId: string } | null = null;
+    let revisionError: string | undefined;
+    if (revisionChannel && revisionChannelId) {
+      try {
+        const message = await postMessage({
+          workspaceId: id.workspaceId,
+          channelId: revisionChannelId,
+          authorMemberId: id.memberId,
+          body: deliverableRevisionBody(request, note.value),
+        });
+        await deliverPostedMessage(req.log, id, revisionChannel, message);
+        revisionMessage = { id: message.id, channelId: message.channelId };
+      } catch (err) {
+        revisionError = "revision note could not be posted";
+        req.log.error({ err, requestId: rid, channelId: revisionChannelId }, revisionError);
+      }
+    }
+
+    req.log.info(approvalDecisionLog(decision.request, "rejected"), "approval request-changes decision recorded");
+    await broadcastApprovalCompletion(req.log, decision.request, id.memberId, "rejected");
+    return reply.code(200).send({
+      status: "rejected",
+      request: approvalRequestView(decision.request),
+      revisionMessage,
+      ...(revisionError ? { revisionError } : {}),
+    });
   });
 
   app.post("/workspaces/:wid/approvals/sweep-expired", async (req, reply) => {

@@ -112,6 +112,7 @@ function fakeDeps(): { deps: StoreDeps; rt: ReturnType<typeof fakeRealtime> } {
       events: vi.fn(async () => []),
       approve: vi.fn(async (rid: string) => ({ status: "executed" as const, result: {}, request: req({ id: rid }) })),
       reject: vi.fn(async (rid: string) => ({ status: "rejected" as const, request: req({ id: rid }) })),
+      requestChanges: vi.fn(async (rid: string) => ({ status: "rejected" as const, request: req({ id: rid }) })),
       listPolicies: vi.fn(async () => []),
       upsertPolicy: vi.fn(async (_w: string, input: { actionType: string }) => pol({ id: "p1", actionType: input.actionType })),
       deletePolicy: vi.fn(async () => ({ ok: true }) as const),

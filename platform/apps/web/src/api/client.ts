@@ -149,6 +149,11 @@ export interface LaunchSessionResult {
 }
 
 /** Result of `POST /approvals/:rid/approve` on success (executor ran). */
+export interface ApprovalEditInput {
+  field: string;
+  value: string;
+}
+
 export interface ApproveResult {
   status: "executed";
   result: Record<string, unknown>;
@@ -159,6 +164,11 @@ export interface ApproveResult {
 export interface RejectResult {
   status: "rejected";
   request: ApprovalRequestDto;
+}
+
+export interface RequestChangesResult extends RejectResult {
+  revisionMessage?: { id: string; channelId: string } | null;
+  revisionError?: string;
 }
 
 /** Body accepted by `POST /workspaces/:wid/approval-policies`. */
@@ -765,15 +775,21 @@ export const api = {
       return request<ApprovalEventDto[]>(`/approvals/${requestId}/events`);
     },
     /** Approve → execute (human-only). Throws ApiError on 403/409/502; callers reconcile. */
-    approve(requestId: string, reason?: string): Promise<ApproveResult> {
+    approve(requestId: string, reason?: string, edit?: ApprovalEditInput): Promise<ApproveResult> {
+      const body: { reason?: string; edit?: ApprovalEditInput } = {};
+      if (reason) body.reason = reason;
+      if (edit) body.edit = edit;
       return post(
         `/approvals/${requestId}/approve`,
-        reason ? { reason } : undefined,
+        Object.keys(body).length > 0 ? body : undefined,
       ) as Promise<ApproveResult>;
     },
     /** Reject with a reason (human-only). */
     reject(requestId: string, reason: string): Promise<RejectResult> {
       return post(`/approvals/${requestId}/reject`, { reason }) as Promise<RejectResult>;
+    },
+    requestChanges(requestId: string, note: string): Promise<RequestChangesResult> {
+      return post(`/approvals/${requestId}/request-changes`, { note }) as Promise<RequestChangesResult>;
     },
     listPolicies(workspaceId: string): Promise<ApprovalPolicyDto[]> {
       return request<ApprovalPolicyDto[]>(`/workspaces/${workspaceId}/approval-policies`);
