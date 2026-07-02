@@ -10,19 +10,25 @@
  *   - {@link LiveSiteReaderProvider} — opted in (config `marketing.readSiteContent` + owner-workspace
  *     gate) to actually crawl the owner's public site read-only.
  *
- * SAFETY (read-only + SSRF containment): the live provider only ever fetches the configured owner site and
- * pages **same-origin** to it — a discovered link to another origin is dropped. http(s) only, a hard page
- * cap, a per-request timeout, and a per-page byte cap. Read-only: it only issues GETs; nothing here
+ * SAFETY (read-only + SSRF containment): the live provider validates each seed and redirect hop with the
+ * shared public-web guard (DNS resolution, private/reserved IP blocking, numeric-host blocking, and only
+ * ports 80/443). It then only follows same-origin page links. Read-only: it only issues GETs; nothing here
  * writes, sends, or spends. The crawled bytes are untrusted DATA handled exclusively by the distill core.
  */
 
 import { DEFAULT_PUBLIC_APP_ORIGIN } from "../../product-origins.js";
+import {
+  defaultPublicWebHostResolver,
+  validatePublicWebUrl,
+  type HostResolver,
+} from "../../security/public-web-url.js";
 import { type FetchedPage, MAX_PAGES, MAX_URL_CHARS } from "./distill.js";
 
 /** Per-request fetch timeout (ms) — a slow/hung page can never stall a launch. */
 export const FETCH_TIMEOUT_MS = 8_000;
 /** Max bytes of a single page body distilled (a marketing page's `<head>`+hero is tiny; cap the rest). */
 export const MAX_PAGE_BYTES = 512 * 1024;
+const MAX_REDIRECTS = 5;
 
 export interface SiteReaderProvider {
   readonly kind: string;
@@ -58,10 +64,11 @@ export class LiveSiteReaderProvider implements SiteReaderProvider {
   constructor(
     private readonly timeoutMs: number = FETCH_TIMEOUT_MS,
     private readonly maxPages: number = MAX_PAGES,
+    private readonly resolver: HostResolver = defaultPublicWebHostResolver,
   ) {}
 
   async fetchPages(seedUrl: string, onLog?: (line: string) => void): Promise<FetchedPage[]> {
-    const seed = this.parseSeed(seedUrl);
+    const seed = await this.parseSeed(seedUrl);
     if (!seed) {
       onLog?.(`▸ [live] refusing to crawl non-http(s) seed ${seedUrl}`);
       return [];
@@ -71,7 +78,8 @@ export class LiveSiteReaderProvider implements SiteReaderProvider {
     if (home) pages.push(home);
 
     // Discover a bounded set of same-origin links from the homepage; cross-origin links are dropped.
-    const links = home ? this.sameOriginLinks(home.html, seed) : [];
+    const linkBase = home ? new URL(home.url) : seed;
+    const links = home ? this.sameOriginLinks(home.html, linkBase) : [];
     for (const link of links) {
       if (pages.length >= this.maxPages) break;
       const p = await this.get(link, onLog);
@@ -82,31 +90,37 @@ export class LiveSiteReaderProvider implements SiteReaderProvider {
   }
 
   /** Parse + validate the seed: http(s) only. Returns the URL or null (the caller refuses to crawl). */
-  private parseSeed(seedUrl: string): URL | null {
-    try {
-      const u = new URL(seedUrl);
-      if (u.protocol !== "https:" && u.protocol !== "http:") return null;
-      return u;
-    } catch {
-      return null;
-    }
+  private async parseSeed(seedUrl: string): Promise<URL | null> {
+    return validatePublicWebUrl(seedUrl, this.resolver);
   }
 
-  /** A single GET with a timeout + byte cap. Returns null on any failure (never throws). */
+  /** A single GET with a timeout, byte cap, and hop-by-hop redirect validation. */
   private async get(url: string, onLog?: (line: string) => void): Promise<FetchedPage | null> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const res = await fetch(url, {
-        method: "GET",
-        redirect: "follow",
-        signal: controller.signal,
-        headers: { Accept: "text/html", "User-Agent": `ipop-site-reader/1.0 (+${DEFAULT_PUBLIC_APP_ORIGIN})` },
-      });
+      let current = await validatePublicWebUrl(url, this.resolver);
+      if (!current) return null;
+      let res: Response | null = null;
+      for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+        res = await fetch(current.href, {
+          method: "GET",
+          redirect: "manual",
+          signal: controller.signal,
+          headers: { Accept: "text/html", "User-Agent": "ipop-site-reader/1.0 (+" + DEFAULT_PUBLIC_APP_ORIGIN + ")" },
+        });
+        if (res.status < 300 || res.status > 399) break;
+        const location = res.headers.get("location");
+        if (!location || redirectCount === MAX_REDIRECTS) return null;
+        const next = await validatePublicWebUrl(location, this.resolver, current);
+        if (!next) return null;
+        current = next;
+      }
+      if (!res) return null;
       const body = (await res.text().catch(() => "")).slice(0, MAX_PAGE_BYTES);
-      return { url: url.slice(0, MAX_URL_CHARS), status: res.status, html: body };
+      return { url: current.href.slice(0, MAX_URL_CHARS), status: res.status, html: body };
     } catch (err) {
-      onLog?.(`▸ [live] skip ${url}: ${err instanceof Error ? err.message : String(err)}`);
+      onLog?.("[live] skip " + url + ": " + (err instanceof Error ? err.message : String(err)));
       return null;
     } finally {
       clearTimeout(timer);
