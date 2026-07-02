@@ -87,3 +87,4 @@ export * from "./outbound-channels.js";
 export * from "./agent-trace.js";
 export * from "./imessage.js";
 export * from "./external-room-message-receipts.js";
+export * from "./intent-scanner.js";

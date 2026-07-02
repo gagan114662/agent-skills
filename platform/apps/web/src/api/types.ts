@@ -1384,6 +1384,71 @@ export interface MissionControlDto {
   failureBreakdown?: MissionFailureBreakdownDto;
 }
 
+export type IntentSource = "reddit" | "x";
+export type IntentLeadStatus = "new" | "reply_pending_approval" | "approved" | "replied" | "dismissed";
+export type IntentCategory =
+  | "active_purchase_research"
+  | "pain_expression"
+  | "competitor_churn"
+  | "noise";
+
+export interface IntentEvidenceDto {
+  quote: string;
+  reason: string;
+}
+
+export interface IntentLeadDto {
+  id: string;
+  workspaceId: string;
+  monitorId: string;
+  source: IntentSource;
+  externalRef: string;
+  url: string;
+  authorLabel: string | null;
+  community: string | null;
+  title: string;
+  bodyExcerpt: string;
+  matchedQuery: string | null;
+  intentCategory: IntentCategory;
+  intentScore: number;
+  evidence: IntentEvidenceDto[];
+  matchedSignals: string[];
+  draftReply: string;
+  status: IntentLeadStatus;
+  approvalRequestId: string | null;
+  detectedAt: string;
+  firstSeenAt: string;
+  updatedAt: string;
+}
+
+export interface IntentMonitorDto {
+  id: string;
+  workspaceId: string;
+  source: IntentSource;
+  label: string;
+  enabled: boolean;
+  subreddits: string[];
+  keywords: string[];
+  competitors: string[];
+  questionPatterns: string[];
+  cadenceMinutes: number;
+  minScore: number;
+  createdByMemberId: string | null;
+  lastScannedAt: string | null;
+  nextScanAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IntentScanSummaryDto {
+  workspaceId: string;
+  monitorsScanned: number;
+  candidatesSeen: number;
+  leadsCreated: number;
+  leadsUpdated: number;
+  approvalsQueued: number;
+}
+
 // --- marketing site (CMS-lite, #153) ---
 
 /** An inline run inside a rendered markdown block. */

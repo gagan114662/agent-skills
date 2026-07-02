@@ -225,6 +225,9 @@ import {
 } from "./leads/default.js";
 import { outreachRoutes } from "./routes/outreach.js";
 import { reachRoutes } from "./routes/reach.js";
+import { intentScannerRoutes } from "./routes/intent-scanner.js";
+import { createDefaultIntentScannerService } from "./intent-scanner/default.js";
+import type { IntentScannerService } from "./intent-scanner/service.js";
 import { createDefaultReachService } from "./reach/default.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { workspaceContextRoutes } from "./routes/workspace-context.js";
@@ -377,6 +380,8 @@ declare module "fastify" {
     scheduler: DurableScheduler;
     /** The #170 Slack digest engine; `index.ts` starts its opt-in tick (SLACK_DIGEST_INTERVAL_MS). */
     slackDigestEngine: SlackDigestEngine;
+    /** The #1548 always-on Reddit/X buying-intent scanner; index.ts registers its opt-in durable tick. */
+    intentScannerService: IntentScannerService;
     /** The #55 cloud workspace manager; `index.ts` starts its opt-in idle sweep. */
     cloudWorkspaceManager: CloudWorkspaceManager;
     /**
@@ -519,6 +524,8 @@ export interface BuildAppOptions {
   decisionMaker?: DecisionMakerService;
   /** #225 outreach engine: tests inject a service over fakes; default builds the real repo-backed one. */
   outreach?: OutreachService;
+  /** #1548 buying-intent scanner: tests inject fakes; default stores leads and uses the connector seam. */
+  intentScanner?: IntentScannerService;
   /** #107 portfolio lifecycle loop: tests inject a service over fakes; default reads the live moat/
    * growth/demand/billing surfaces. */
   portfolio?: PortfolioService;
@@ -1266,6 +1273,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // record EXTERNAL receipts (which advance the #222 pipeline), and read message experiments. No send
   // endpoint exists — the send happens only after the owner approves, via the recorded-only executor.
   app.register(outreachRoutes, { service: outreachService });
+  // #1548 buying-intent scanner: scheduled Reddit/X monitors persist scored threads with quoted evidence
+  // and draft an Echo reply into the owner approval queue. The connector provider is a seam (#395 owns the
+  // live pipes); this route never posts externally and never changes send/spend approval gates.
+  const intentScannerService = opts.intentScanner ?? createDefaultIntentScannerService();
+  app.register(intentScannerRoutes, { service: intentScannerService });
+  app.decorate("intentScannerService", intentScannerService);
   // #280 Reach outbound demand-gen: run a batch of the self-improving loop (source live-signal prospects →
   // score/dedupe → personalise → auto-send under caps + suppression → enrol cadence → measure → self-tune),
   // record external engagement receipts, and read the proof summary. Default-OFF (caps gate the batch); a

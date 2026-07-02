@@ -136,6 +136,13 @@ export const OUTREACH_SEND_ACTION = "outreach.send" as const;
 export const OUTREACH_CALL_PREP_ACTION = "outreach.call_prep" as const;
 
 /**
+ * #1548 buying-intent reply draft. The scanner can surface a Reddit/X lead and park the exact suggested
+ * reply for owner review, but approving this action is recorded-only until the #395 external-posting pipe
+ * owns a real connector. No autonomous post path is introduced here.
+ */
+export const INTENT_REPLY_ACTION = "intent.reply" as const;
+
+/**
  * #268 a real Postmark email send. Composing an email is free, but pushing it to a real inbox is the most
  * IRREVERSIBLE acquisition surface (premortem #200 §4: a sent email is in a stranger's inbox forever and burns
  * sender reputation). So — exactly like `outreach.send` — a live send is sensitive AND irreversible: it ALWAYS
@@ -310,6 +317,7 @@ export const APPROVAL_EXECUTOR_ACTION_TYPES: readonly string[] = [
   HOSTED_PUBLISH_ACTION,
   SOCIAL_PUBLISH_POST_ACTION,
   OUTREACH_SEND_ACTION,
+  INTENT_REPLY_ACTION,
   EMAIL_LIVE_SEND_ACTION,
   REACH_DATA_CREDIT_ACTION,
   SKILLOPT_ADOPT_EDIT_ACTION,

@@ -53,6 +53,10 @@ import type {
   InboundLeadsResponse,
   InboundLeadStatus,
   InboundLeadUpdateInput,
+  IntentLeadDto,
+  IntentLeadStatus,
+  IntentMonitorDto,
+  IntentScanSummaryDto,
   DailyBriefDto,
   WeeklyReportDto,
   VentureIdeaInput,
@@ -620,6 +624,37 @@ export const api = {
     return patch(`/me/inbound/leads/${encodeURIComponent(leadId)}`, input) as Promise<{
       lead: InboundLeadDto;
     }>;
+  },
+
+  // --- buying-intent scanner (#1548): scored Reddit/X lead queue, never a send path ---
+  intentScanner: {
+    listMonitors(workspaceId: string): Promise<{ monitors: IntentMonitorDto[] }> {
+      return request<{ monitors: IntentMonitorDto[] }>(
+        `/workspaces/${workspaceId}/intent-scanner/monitors`,
+      );
+    },
+    listLeads(
+      workspaceId: string,
+      params: { status?: IntentLeadStatus; limit?: number } = {},
+    ): Promise<{ leads: IntentLeadDto[] }> {
+      const qs = new URLSearchParams();
+      if (params.status) qs.set("status", params.status);
+      if (params.limit !== undefined) qs.set("limit", String(params.limit));
+      const suffix = qs.size ? `?${qs.toString()}` : "";
+      return request<{ leads: IntentLeadDto[] }>(
+        `/workspaces/${workspaceId}/intent-scanner/leads${suffix}`,
+      );
+    },
+    scan(workspaceId: string): Promise<{ scan: IntentScanSummaryDto }> {
+      return post(`/workspaces/${workspaceId}/intent-scanner/scan`) as Promise<{
+        scan: IntentScanSummaryDto;
+      }>;
+    },
+    queueReply(workspaceId: string, leadId: string): Promise<{ lead: IntentLeadDto }> {
+      return post(
+        `/workspaces/${workspaceId}/intent-scanner/leads/${encodeURIComponent(leadId)}/queue-reply`,
+      ) as Promise<{ lead: IntentLeadDto }>;
+    },
   },
 
   // --- founder briefings (#173): the daily brief, weekly P&L report, and decision queue ---
