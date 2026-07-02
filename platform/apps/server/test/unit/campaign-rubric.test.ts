@@ -14,6 +14,7 @@ import {
   validateAsset,
   type CampaignAsset,
 } from "../../src/campaign-rubric/index.js";
+import { matchNumericClaims } from "../../src/campaign-rubric/voice.js";
 
 const ctx = { approvedClaims: IPOP_LAUNCH_BRIEF.brandClaims };
 
@@ -45,6 +46,30 @@ describe("campaign-rubric spec validators", () => {
     expect(validateAsset(ad).some((v) => v.severity === "error")).toBe(false);
   });
 
+  it("enforces the Google RSA max counts (≤15 headlines, ≤4 descriptions)", () => {
+    const tooMany: CampaignAsset = {
+      kind: "google-search-ad",
+      title: "ad",
+      lists: {
+        headlines: Array.from({ length: 16 }, (_, i) => `Headline ${i + 1}`),
+        descriptions: Array.from({ length: 5 }, (_, i) => `Description ${i + 1} that stays under ninety characters comfortably.`),
+      },
+    };
+    const violations = validateAsset(tooMany);
+    expect(violations.some((v) => v.rule === "google.headline.count" && v.severity === "error" && v.message.includes("15"))).toBe(true);
+    expect(violations.some((v) => v.rule === "google.description.count" && v.severity === "error" && v.message.includes("4"))).toBe(true);
+    // Exactly at the cap is allowed.
+    const atCap: CampaignAsset = {
+      kind: "google-search-ad",
+      title: "ad",
+      lists: {
+        headlines: Array.from({ length: 15 }, (_, i) => `Headline ${i + 1}`),
+        descriptions: Array.from({ length: 4 }, (_, i) => `Description ${i + 1} under ninety chars.`),
+      },
+    };
+    expect(validateAsset(atCap).some((v) => v.severity === "error")).toBe(false);
+  });
+
   it("requires a shot list on a video script and an X post under 280", () => {
     const noShots: CampaignAsset = { kind: "video-script", title: "v", text: "Some narration that is long enough to be a spot but has no shots listed at all here." };
     expect(validateAsset(noShots).some((v) => v.rule === "video.shots")).toBe(true);
@@ -58,6 +83,14 @@ describe("campaign-rubric voice checks", () => {
     const a: CampaignAsset = { kind: "meta-ad", title: "m", fields: { primaryText: "We seamlessly revolutionize your funnel.", headline: "h", visual: "v" } };
     const hits = detectSlop(a);
     expect(hits.map((h) => h.phrase)).toEqual(expect.arrayContaining(["seamlessly", "revolutionize"]));
+  });
+
+  it("matches full multi-digit dollar amounts, not just the leading digit", () => {
+    expect(matchNumericClaims("Save $1,000,000 a year")).toContain("$1,000,000");
+    expect(matchNumericClaims("Only $9.99/mo")).toContain("$9.99");
+    expect(matchNumericClaims("Cut costs by $50k")).toContain("$50k");
+    // A bare "$5" still matches, and a huge figure is NOT truncated to "$1".
+    expect(matchNumericClaims("$1,000,000")).not.toContain("$1");
   });
 
   it("flags an unapproved numeric claim not on the allowlist", () => {

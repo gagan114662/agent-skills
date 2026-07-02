@@ -73,11 +73,20 @@ const SUPERLATIVES: readonly string[] = [
   "100%",
 ];
 
-/** Numeric-claim shapes: percentages, multipliers, dollar amounts, "N hours/days/x". */
-const NUMERIC_CLAIM_RE = /\b(\d+(?:\.\d+)?)\s*(%|x|×|hours?|days?|weeks?|minutes?|customers?|users?|dollars?)\b|\$\s?\d/gi;
+/**
+ * Numeric-claim shapes: percentages, multipliers, "N hours/days/x", and dollar amounts. The dollar branch
+ * matches full amounts with thousands separators and decimals ("$1,000", "$9.99", "$50k"), not just the
+ * leading digit — a naive `\$\s?\d` only caught the first digit of "$1,000,000".
+ */
+const NUMERIC_CLAIM_RE = /\b(\d+(?:\.\d+)?)\s*(%|x|×|hours?|days?|weeks?|minutes?|customers?|users?|dollars?)\b|\$\s?\d[\d,]*(?:\.\d+)?[kmb]?/gi;
 
 function normalize(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/** Extract the raw numeric/dollar claim tokens from a text (exported so the match shapes are unit-tested). */
+export function matchNumericClaims(text: string): string[] {
+  return [...text.matchAll(NUMERIC_CLAIM_RE)].map((m) => m[0]);
 }
 
 /** Detect AI-slop phrases across every text fragment of an asset. */

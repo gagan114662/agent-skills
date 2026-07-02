@@ -12,7 +12,7 @@ import type { AssetKind, CampaignAsset, SpecViolation } from "./types.js";
 
 /** All numeric channel limits in one place so tests and docs cite a single source. */
 export const SPEC = {
-  googleAd: { headlineMax: 30, headlineMin: 3, headlineIdeal: 5, descriptionMax: 90, descriptionMin: 2, descriptionCap: 4 },
+  googleAd: { headlineMax: 30, headlineMin: 3, headlineIdeal: 5, headlineCap: 15, descriptionMax: 90, descriptionMin: 2, descriptionCap: 4 },
   metaAd: { primaryTextIdeal: 125, headlineMax: 40, linkDescIdeal: 30 },
   email: { subjectMax: 60, subjectIdeal: 50 },
   socialX: { max: 280 },
@@ -45,8 +45,10 @@ function validateGoogleAd(a: CampaignAsset): SpecViolation[] {
   const descriptions = list(a, "descriptions");
   if (headlines.length < SPEC.googleAd.headlineMin) {
     v.push(err("google.headline.count", `RSA needs ≥${SPEC.googleAd.headlineMin} headlines, found ${headlines.length}.`));
+  } else if (headlines.length > SPEC.googleAd.headlineCap) {
+    v.push(err("google.headline.count", `RSA accepts at most ${SPEC.googleAd.headlineCap} headlines, found ${headlines.length} (the platform rejects the extras).`));
   } else if (headlines.length < SPEC.googleAd.headlineIdeal) {
-    v.push(warn("google.headline.count", `Only ${headlines.length} headlines; Google rewards ${SPEC.googleAd.headlineIdeal}–15 for optimization.`));
+    v.push(warn("google.headline.count", `Only ${headlines.length} headlines; Google rewards ${SPEC.googleAd.headlineIdeal}–${SPEC.googleAd.headlineCap} for optimization.`));
   }
   headlines.forEach((h, i) => {
     if (h.length > SPEC.googleAd.headlineMax) {
@@ -55,6 +57,8 @@ function validateGoogleAd(a: CampaignAsset): SpecViolation[] {
   });
   if (descriptions.length < SPEC.googleAd.descriptionMin) {
     v.push(err("google.description.count", `RSA needs ≥${SPEC.googleAd.descriptionMin} descriptions, found ${descriptions.length}.`));
+  } else if (descriptions.length > SPEC.googleAd.descriptionCap) {
+    v.push(err("google.description.count", `RSA accepts at most ${SPEC.googleAd.descriptionCap} descriptions, found ${descriptions.length} (the platform rejects the extras).`));
   }
   descriptions.forEach((d, i) => {
     if (d.length > SPEC.googleAd.descriptionMax) {
