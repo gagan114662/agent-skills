@@ -145,6 +145,47 @@ describe("App root routing", () => {
     expect(screen.queryByRole("heading", { name: "Page not found" })).not.toBeInTheDocument();
   });
 
+  it("navigates from a /pricing plan CTA to the real signup form, never the workspace room (#1489)", async () => {
+    navigate("/pricing");
+    const { deps } = makeFakeDeps({ me: unauthorized });
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    // The public pricing page renders with one CTA per plan.
+    await screen.findByRole("heading", { name: PRICING.title });
+    const proCta = screen.getByRole("link", {
+      name: (name) =>
+        name.toLowerCase().includes(PRICING.planCta.toLowerCase()) &&
+        name.toLowerCase().includes("pro"),
+    });
+
+    // #1489 root cause guard: the plan CTA must be a browser-native anchor pointing straight at the
+    // plan's signup URL — a full navigation the browser always performs. It must NOT be a client-side
+    // handler that can preventDefault the click and strand a buyer on /pricing (the reported dead end).
+    expect(proCta.tagName).toBe("A");
+    expect(proCta).toHaveAttribute("href", "/signup?plan=pro&billing=month");
+    // fireEvent.click returns false only when a handler cancelled the event (called preventDefault);
+    // true proves nothing swallowed the click, so the browser follows the href.
+    expect(fireEvent.click(proCta)).toBe(true);
+
+    // Following that href through the real App + AuthGate lands a logged-out buyer on the account form —
+    // the create-account fields with the chosen plan framed, never the iMessage workspace room the bug
+    // fell through to.
+    await act(async () => {
+      navigate("/signup?plan=pro&billing=month");
+    });
+    expect(await screen.findByRole("button", { name: /create account/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/display name/i)).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent(PRICING.trial.onPlan("Pro"));
+    expect(screen.queryByRole("heading", { name: "iMessage room" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Marketing dashboard" })).not.toBeInTheDocument();
+  });
+
   it.each([
     { path: "/demo", selector: ".demo" },
     { path: "/pricing", selector: ".pricing-page" },
