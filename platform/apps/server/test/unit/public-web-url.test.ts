@@ -4,6 +4,7 @@ import {
   fetchPinnedPublicWebUrl,
   isBlockedPublicIpv6,
   readPublicWebResponseText,
+  readPublicWebResponsePrefix,
   validatePublicWebUrl,
   type PublicWebFetch,
 } from "../../src/security/public-web-url.js";
@@ -106,5 +107,18 @@ describe("public web URL guard", () => {
     });
 
     await expect(readPublicWebResponseText(new Response(stream), 4)).resolves.toBeNull();
+  });
+
+  it("readPublicWebResponsePrefix keeps the byte-capped prefix instead of discarding oversized bodies", async () => {
+    const big = "HEAD" + "x".repeat(1000);
+    await expect(readPublicWebResponsePrefix(new Response(big), 4)).resolves.toEqual({
+      text: "HEAD",
+      truncated: true,
+    });
+    // A body within the cap is returned whole and marked not-truncated.
+    await expect(readPublicWebResponsePrefix(new Response("HEAD"), 4)).resolves.toEqual({
+      text: "HEAD",
+      truncated: false,
+    });
   });
 });

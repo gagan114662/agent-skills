@@ -271,6 +271,62 @@ export async function fetchPinnedPublicWebUrl(
   }
 }
 
+export interface PublicWebResponsePrefix {
+  /** The decoded body text, truncated to at most `maxBytes` of the original stream. */
+  text: string;
+  /** True when the body was longer than `maxBytes` and we stopped early. */
+  truncated: boolean;
+}
+
+/**
+ * Read up to `maxBytes` of a response body and return the decoded prefix, unlike
+ * {@link readPublicWebResponseText} which is all-or-nothing (null when the body exceeds the cap). Callers
+ * that only need early markup — a homepage's `<title>`, meta description, and `<h1>`, which sit near the
+ * top of the document — can parse what we safely read instead of dead-ending on large pages. Modern
+ * JS-framework homepages (e.g. Next.js sites) routinely inflate past a few hundred KB, so discarding the
+ * whole page there means "unreadable" for perfectly readable sites.
+ *
+ * This is exactly as DoS-safe as the strict reader: the byte cap is hard, we stop reading and cancel the
+ * stream the moment a chunk would cross `maxBytes`, and — because it is bounded reading, not fabrication —
+ * it does not weaken any SSRF guarantee (the connection was already pinned/validated upstream). We ignore
+ * the `content-length` header on purpose: an oversized body is not rejected here, it is truncated.
+ */
+export async function readPublicWebResponsePrefix(
+  response: Response,
+  maxBytes: number,
+): Promise<PublicWebResponsePrefix> {
+  if (!response.body) {
+    const raw = await response.text().catch(() => "");
+    const encoded = new TextEncoder().encode(raw);
+    if (encoded.byteLength <= maxBytes) return { text: raw, truncated: false };
+    return { text: new TextDecoder().decode(encoded.subarray(0, maxBytes)), truncated: true };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = maxBytes - bytes;
+      if (value.byteLength > remaining) {
+        text += decoder.decode(value.subarray(0, Math.max(0, remaining)));
+        await reader.cancel();
+        return { text, truncated: true };
+      }
+      bytes += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return { text, truncated: false };
+  } catch {
+    await reader.cancel().catch(() => undefined);
+    return { text, truncated: text !== "" };
+  }
+}
+
 export async function readPublicWebResponseText(
   response: Response,
   maxBytes: number,

@@ -3,7 +3,7 @@ import {
   defaultPublicWebHostResolver,
   fetchPinnedPublicWebUrl,
   isBlockedPublicHostnameLiteral,
-  readPublicWebResponseText,
+  readPublicWebResponsePrefix,
   validatePublicWebUrl,
   type PublicWebFetch,
   type HostResolver,
@@ -181,8 +181,10 @@ async function fetchSnapshotUrl(
       return res.ok ? null : httpStatusSnapshot(sourceUrl, res.status);
     }
     if (!res.ok) return httpStatusSnapshot(sourceUrl, res.status);
-    const html = await readPublicWebResponseText(res, MAX_HTML_BYTES);
-    if (html === null) return null;
+    // Read the safe, byte-capped prefix rather than discarding the whole page when it exceeds the cap:
+    // a homepage's title/meta/H1/CTAs sit in the early markup, and modern JS-framework sites routinely
+    // inflate past the cap, so all-or-nothing reading would falsely report readable sites as unreadable.
+    const { text: html } = await readPublicWebResponsePrefix(res, MAX_HTML_BYTES);
     return (
       parseSiteSnapshot(sourceUrl, res.status, html) ??
       (res.ok ? null : httpStatusSnapshot(sourceUrl, res.status))
