@@ -20,6 +20,7 @@ import {
   clearPendingFirstRunReceipt,
   readPendingFirstRunReceipt,
 } from "../onboarding/first-run-receipt.js";
+import { usePublicLightTheme } from "../../design/public-theme.js";
 import { EverydayShell, type EverydayRoomLaunchResult, type EverydayShellTheme } from "./EverydayShell.js";
 import {
   customerVisibleAgentText,
@@ -885,8 +886,12 @@ async function activateFirstRunTeam(
 export function LiveEverydayShell({
   dashboardFirst = false,
   dashboardOnly = false,
-  theme = "workspace",
+  theme = "public",
 }: { dashboardFirst?: boolean; dashboardOnly?: boolean; theme?: EverydayShellTheme } = {}): React.JSX.Element {
+  // #1532: the everyday room is a warm, homepage-light surface — not the near-black app chrome. Stamp the
+  // public light theme on <body> (so the page background matches rgb(246,241,231), never the reload-dark
+  // rgb(13,13,17)); the shell itself flips warm via the `public` theme below.
+  usePublicLightTheme();
   const state = useAppState();
   const store = useStore();
   useLiveChannelMessages(state.activeChannelId ?? null);
