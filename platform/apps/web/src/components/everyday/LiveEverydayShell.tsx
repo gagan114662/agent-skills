@@ -12,7 +12,6 @@ import type {
   TeamRunSubtaskInput,
 } from "../../api/types.js";
 import type { AppState, LiveSessionLite } from "../../store/store.js";
-import { authorLabel } from "../../store/store.js";
 import { useAppState, useStore } from "../../store/StoreContext.js";
 import { useLiveChannelMessages } from "../console/useLiveChannelMessages.js";
 import { useLiveMissionControl } from "../console/useLiveMissionControl.js";
@@ -23,8 +22,11 @@ import {
 import { usePublicLightTheme } from "../../design/public-theme.js";
 import { EverydayShell, type EverydayRoomLaunchResult, type EverydayShellTheme } from "./EverydayShell.js";
 import {
+  canonicalRoomAgentName,
   customerVisibleAgentText,
+  isSessionOutcomeSuccessLine,
   parseTeamEvent,
+  teamEventAgentName,
   teamEventFriendlyLine,
 } from "./everyday-agent-text.js";
 import {
@@ -71,7 +73,7 @@ function payloadPreview(request: ApprovalRequestDto): string {
 
 function approvalCard(request: ApprovalRequestDto, state: AppState): ApprovalCard {
   const action = request.actionType.replace(/[._-]+/g, " ");
-  const requester = authorLabel(state.directory, request.requesterMemberId);
+  const requester = resolvedRoomAgent(state, request.requesterMemberId);
   return {
     id: request.id,
     approvalRequestId: request.id,
@@ -91,6 +93,39 @@ function parseTeamEventMessage(message: Message): TeamEvent | null {
   return parseTeamEvent(message.body);
 }
 
+/**
+ * The named teammate a room message is from — never a raw `member-019eb7` id or the literal "workspace"
+ * (#1584 rule 1). Prefer the workspace directory display name, fall back to the agent a team-event's
+ * lifecycle summary names, and only then to a plain "the team" — the customer always sees a person.
+ */
+function resolvedRoomAgent(
+  state: AppState,
+  memberId: string,
+  event: TeamEvent | null = null,
+): string {
+  const display = state.directory[memberId]?.displayName;
+  if (display) return canonicalRoomAgentName(display);
+  if (event) {
+    const named = teamEventAgentName(event);
+    if (named) return named;
+  }
+  return "the team";
+}
+
+/**
+ * A subtle, honest timestamp for a room line (#1584 rule 4) — the event's clock time when we have it,
+ * "just now" for the newest line, and nothing (never "workspace") for older, timestamp-less messages.
+ */
+function threadAtLabel(createdAt: string | null | undefined, isLatest: boolean): string {
+  if (createdAt) {
+    const when = new Date(createdAt);
+    if (!Number.isNaN(when.getTime())) {
+      return when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+  }
+  return isLatest ? "just now" : "";
+}
+
 function draftText(draft: MarketingDraft): string {
   const fields = Object.entries(draft.fields).flatMap(([field, value]) => {
     if (Array.isArray(value)) return value.map((item) => field + ": " + item);
@@ -106,7 +141,8 @@ function teamEventThreadEntry(
   visibleCount: number,
   state: AppState,
 ): ThreadEntry {
-  const agent = authorLabel(state.directory, event.agentMemberId);
+  const agent = resolvedRoomAgent(state, event.agentMemberId, event);
+  const at = threadAtLabel(event.createdAt, index === visibleCount - 1);
   if (event.artifact?.kind === "draft_set") {
     const firstDraft = event.artifact.drafts?.[0];
     if (firstDraft) {
@@ -115,7 +151,7 @@ function teamEventThreadEntry(
         teamRunId: event.teamRunId,
         kind: "deliverable",
         agent: agent.toLowerCase().includes("quill") ? agent : "Quill",
-        at: index === visibleCount - 1 ? "latest" : "workspace",
+        at,
         deliverable: {
           title: firstDraft.title,
           kind: "draft",
@@ -129,7 +165,7 @@ function teamEventThreadEntry(
     teamRunId: event.teamRunId,
     kind: "agent-line",
     agent,
-    at: index === visibleCount - 1 ? "latest" : "workspace",
+    at,
     text: teamEventFriendlyLine(event),
   };
 }
@@ -137,17 +173,21 @@ function teamEventThreadEntry(
 function threadEntries(state: AppState): ThreadEntry[] {
   const channelId = state.activeChannelId;
   const messages = channelId ? (state.messagesByChannel[channelId] ?? []) : [];
-  const visible = messages.slice(-8);
+  // Drop the runtime's exit-code success line (`✅ session completed (exit 0)`) — pure plumbing that must
+  // never surface as a bubble; the real deliverable is posted as its own message (#1584 rule 4).
+  const visible = messages
+    .filter((message) => !isSessionOutcomeSuccessLine(message.body ?? ""))
+    .slice(-8);
   return visible.map((message, index) => {
     const event = parseTeamEventMessage(message);
     if (event) return teamEventThreadEntry(message, event, index, visible.length, state);
     return {
       id: message.id,
       kind: "agent-line",
-      agent: authorLabel(state.directory, message.authorMemberId),
-      at: index === visible.length - 1 ? "latest" : "workspace",
-      // Never render a raw body: a malformed team-event blob or a runtime/log line becomes a friendly
-      // brand-voice placeholder; genuine human messages pass through unchanged.
+      agent: resolvedRoomAgent(state, message.authorMemberId),
+      at: threadAtLabel(null, index === visible.length - 1),
+      // Never render a raw body: a malformed team-event blob, a session failure line, or a runtime/log
+      // line becomes honest brand-voice text; genuine human messages pass through unchanged.
       text: customerVisibleAgentText(message.body ?? ""),
     };
   });

@@ -18,7 +18,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client.js";
 import type { IMessageStatusResponse } from "../../api/types.js";
 import { EVERYDAY } from "../../brand.js";
-import { customerVisibleAgentText } from "./everyday-agent-text.js";
+import { customerVisibleAgentText, roomAgentRole } from "./everyday-agent-text.js";
 import { CopyButton } from "../CopyButton.js";
 import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
 import { APP_ROUTES } from "../../routing.js";
@@ -223,6 +223,9 @@ function GroupChatHero({
               <div className="everyday-chat__bubble">
                 <p className="everyday-msg__meta">
                   <span className="everyday-msg__agent">{entry.agent}</span>
+                  {roomAgentRole(entry.agent) && (
+                    <span className="everyday-msg__role">{roomAgentRole(entry.agent)}</span>
+                  )}
                   <span className="everyday-msg__at">{entry.at}</span>
                 </p>
                 {entry.kind === "agent-line" ? (
