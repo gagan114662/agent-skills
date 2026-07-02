@@ -10433,6 +10433,13 @@ select:focus-visible {
   color: var(--ed-text-dim);
   margin-bottom: 10px;
 }
+.everyday-deliverable__title {
+  margin: 0 0 8px;
+  color: var(--ed-text);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+}
 .everyday-deliverable__body {
   color: var(--ed-text);
 }

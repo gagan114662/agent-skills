@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ApprovalRequestDto } from "@reload/shared";
+import type { ApprovalRequestDto, TeamEvent, MarketingDraft } from "@reload/shared";
 import { api } from "../../api/client.js";
 import type {
   ConnectionView,
@@ -32,6 +32,7 @@ import {
 } from "./everyday-data.js";
 
 const STARTER_AGENT_SEAT_LIMIT = 5;
+const TEAM_EVENT_MARKER = "::team-event::";
 
 function navigateToTelegramStart(link: Awaited<ReturnType<typeof api.startTelegramConnection>>): void {
   if (link.startUrl) {
@@ -74,17 +75,74 @@ function approvalCard(request: ApprovalRequestDto, state: AppState): ApprovalCar
   };
 }
 
+function parseTeamEventMessage(message: Message): TeamEvent | null {
+  if (!message.body.startsWith(TEAM_EVENT_MARKER)) return null;
+  try {
+    const parsed = JSON.parse(message.body.slice(TEAM_EVENT_MARKER.length).trim()) as TeamEvent;
+    return parsed && typeof parsed.summary === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function draftText(draft: MarketingDraft): string {
+  const fields = Object.entries(draft.fields).flatMap(([field, value]) => {
+    if (Array.isArray(value)) return value.map((item) => field + ": " + item);
+    return field + ": " + value;
+  });
+  return fields.join("\n");
+}
+
+function teamEventThreadEntry(
+  message: Message,
+  event: TeamEvent,
+  index: number,
+  visibleCount: number,
+  state: AppState,
+): ThreadEntry {
+  const agent = authorLabel(state.directory, event.agentMemberId);
+  if (event.artifact?.kind === "draft_set") {
+    const firstDraft = event.artifact.drafts[0];
+    if (firstDraft) {
+      return {
+        id: message.id,
+        teamRunId: event.teamRunId,
+        kind: "deliverable",
+        agent: agent.toLowerCase().includes("quill") ? agent : "Quill",
+        at: index === visibleCount - 1 ? "latest" : "workspace",
+        deliverable: {
+          title: firstDraft.title,
+          kind: "draft",
+          preview: draftText(firstDraft),
+        },
+      };
+    }
+  }
+  return {
+    id: message.id,
+    teamRunId: event.teamRunId,
+    kind: "agent-line",
+    agent,
+    at: index === visibleCount - 1 ? "latest" : "workspace",
+    text: event.summary,
+  };
+}
+
 function threadEntries(state: AppState): ThreadEntry[] {
   const channelId = state.activeChannelId;
   const messages = channelId ? (state.messagesByChannel[channelId] ?? []) : [];
   const visible = messages.slice(-8);
-  return visible.map((message, index) => ({
-    id: message.id,
-    kind: "agent-line",
-    agent: authorLabel(state.directory, message.authorMemberId),
-    at: index === visible.length - 1 ? "latest" : "workspace",
-    text: message.body,
-  }));
+  return visible.map((message, index) => {
+    const event = parseTeamEventMessage(message);
+    if (event) return teamEventThreadEntry(message, event, index, visible.length, state);
+    return {
+      id: message.id,
+      kind: "agent-line",
+      agent: authorLabel(state.directory, message.authorMemberId),
+      at: index === visible.length - 1 ? "latest" : "workspace",
+      text: message.body,
+    };
+  });
 }
 
 function firstRunTime(firstRun: FirstRunReceiptDto): string {
@@ -100,6 +158,11 @@ function stageLabel(stage: FirstRunReceiptDto["stage"]): string {
   return "agent result";
 }
 
+function firstRunHasContentDraft(firstRun: FirstRunReceiptDto): boolean {
+  if (firstRun.stage !== "agent_result") return false;
+  return !/\b(?:site[- ]?read|receipt|research|source read)\b/i.test(firstRun.artifactTitle);
+}
+
 function withFirstRunReceipt(
   data: EverydayData,
   firstRun: FirstRunReceiptDto | null,
@@ -112,31 +175,34 @@ function withFirstRunReceipt(
     href: "#dashboard",
     receiptLabel: firstRun.receipt,
   };
+  const hasContentDraft = firstRunHasContentDraft(firstRun);
+  const emptyThread: ThreadEntry[] = [
+    {
+      id: "first-run-scout",
+      kind: "agent-line",
+      agent: "Scout",
+      at: "first run",
+      text: firstRun.finding,
+    },
+    ...(hasContentDraft
+      ? [
+          {
+            id: "first-run-quill",
+            kind: "deliverable" as const,
+            agent: "Quill",
+            at: "queued",
+            deliverable: {
+              title: firstRun.artifactTitle,
+              kind: "draft" as const,
+              preview: firstRun.artifactSummary,
+            },
+          },
+        ]
+      : []),
+  ];
   return {
     ...data,
-    thread:
-      data.thread.length > 0
-        ? data.thread
-        : [
-            {
-              id: "first-run-scout",
-              kind: "agent-line",
-              agent: "Scout",
-              at: "first run",
-              text: firstRun.finding,
-            },
-            {
-              id: "first-run-quill",
-              kind: "deliverable",
-              agent: "Quill",
-              at: "queued",
-              deliverable: {
-                title: firstRun.artifactTitle,
-                kind: "draft",
-                preview: firstRun.artifactSummary,
-              },
-            },
-          ],
+    thread: data.thread.length > 0 ? data.thread : emptyThread,
     transparency: data.transparency.some((entry) => entry.id === receiptAction.id)
       ? data.transparency
       : [...data.transparency, receiptAction],
@@ -175,7 +241,11 @@ function withFirstRunReceipt(
       ],
       sinceLastCheckIn: [
         { title: "First useful marketing result captured", owner: "Scout", proof: firstRun.receipt },
-        { title: "Draft artifact is ready for the owner", owner: "Quill", proof: firstRun.artifactTitle },
+        {
+          title: hasContentDraft ? "Draft artifact is ready for the owner" : "Research receipt captured; draft still pending",
+          owner: hasContentDraft ? "Quill" : "Scout",
+          proof: hasContentDraft ? firstRun.artifactTitle : firstRun.receipt,
+        },
         { title: "External sends remain gated", owner: "Operator", proof: "no external transparency receipt created" },
       ],
       goal: {
@@ -196,11 +266,11 @@ function withFirstRunReceipt(
         },
         {
           label: "drafts ready",
-          value: "1",
-          detail: firstRun.artifactTitle,
-          tone: "good",
+          value: hasContentDraft ? "1" : "0",
+          detail: hasContentDraft ? firstRun.artifactTitle : "waiting for Quill or Echo content",
+          tone: hasContentDraft ? "good" : "neutral",
           proofKind: "live",
-          proof: firstRun.artifactSummary,
+          proof: hasContentDraft ? firstRun.artifactSummary : "site-read receipts are research, not drafts",
         },
         {
           label: "receipts",
@@ -228,11 +298,13 @@ function withFirstRunReceipt(
           proof: firstRun.receipt,
         },
         {
-          agent: "Quill",
-          work: firstRun.artifactTitle,
-          impact: "asset is ready to approve, but has not moved revenue yet",
-          status: "queued",
-          proof: firstRun.artifactSummary,
+          agent: hasContentDraft ? "Quill" : "Scout",
+          work: hasContentDraft ? firstRun.artifactTitle : "site-read research receipt",
+          impact: hasContentDraft
+            ? "asset is ready to approve, but has not moved revenue yet"
+            : "research is captured, but no Quill or Echo content draft exists yet",
+          status: hasContentDraft ? "queued" : "learning",
+          proof: hasContentDraft ? firstRun.artifactSummary : firstRun.receipt,
         },
         {
           agent: "Echo",
@@ -271,7 +343,12 @@ function withFirstRunReceipt(
       funnel: [
         { label: "source", count: "1", detail: firstRun.target, tone: "good" },
         { label: "insight", count: "1", detail: "site finding recorded", tone: "good" },
-        { label: "asset", count: "1", detail: firstRun.artifactTitle, tone: "good" },
+        {
+          label: "asset",
+          count: hasContentDraft ? "1" : "0",
+          detail: hasContentDraft ? firstRun.artifactTitle : "waiting for content draft",
+          tone: hasContentDraft ? "good" : "neutral",
+        },
         {
           label: "approved",
           count: String(data.approvals.length),
@@ -289,7 +366,7 @@ function withFirstRunReceipt(
         {
           source: "website",
           status: "read",
-          pipeline: firstRun.artifactTitle,
+          pipeline: hasContentDraft ? firstRun.artifactTitle : "research captured; draft pending",
           conversion: "not measured yet",
           spend: "$0",
           next: "turn the finding into approved copy and connector-backed distribution",
@@ -692,15 +769,21 @@ function slug(value: string): string {
 }
 
 async function resolveAgentMemberId(state: AppState, role: string): Promise<string | null> {
+  const workspaceId = state.identity?.workspaceId;
+  if (workspaceId) {
+    const hits = await api.searchMembers(workspaceId, role).catch(() => []);
+    const exact = hits.find(
+      (hit) => hit.kind === "agent" && hit.displayName.toLowerCase() === role.toLowerCase(),
+    );
+    if (exact) return exact.id;
+    const named = hits.find((hit) => hit.kind === "agent");
+    if (named) return named.id;
+  }
   const cached = Object.values(state.directory).find(
     (entry) =>
       entry.kind === "agent" && entry.displayName.toLowerCase().includes(role.toLowerCase()),
   );
-  if (cached) return cached.id;
-  const workspaceId = state.identity?.workspaceId;
-  if (!workspaceId) return null;
-  const hits = await api.searchMembers(workspaceId, role).catch(() => []);
-  return hits.find((hit) => hit.kind === "agent")?.id ?? null;
+  return cached?.id ?? null;
 }
 
 async function launchCodexRoomRun(
@@ -709,13 +792,17 @@ async function launchCodexRoomRun(
 ): Promise<EverydayRoomLaunchResult> {
   const channelId = state.activeChannelId;
   if (!channelId) throw new Error("Open a workspace channel before starting the iMessage room.");
+  const started = await startCanonicalRoomMessage(channelId, goal);
+  const workspaceId = state.identity?.workspaceId;
+  if (workspaceId) {
+    await api.department.seed(workspaceId, { welcomeTasks: false }).catch(() => undefined);
+  }
   const codex = await api.getCodexStatus();
   if (!codex.connected) {
     throw new Error(
       "The team engine is not connected to your signed-in subscription yet. Connect it before starting the agent room.",
     );
   }
-  const started = await startCanonicalRoomMessage(channelId, goal);
 
   const subtasks: TeamRunSubtaskInput[] = [];
   for (const spec of ROOM_AGENT_TASKS) {
@@ -736,8 +823,8 @@ async function launchCodexRoomRun(
       "No Scout/Quill/Echo/Lens/operator agents were found in this workspace roster yet.",
     );
   }
-  await api.launchTeamRun(channelId, subtasks);
-  return started;
+  const teamRun = await api.launchTeamRun(channelId, subtasks);
+  return { ...started, teamRunId: teamRun.teamRunId };
 }
 
 async function startCanonicalRoomMessage(
@@ -894,7 +981,11 @@ export function LiveEverydayShell({
         await api.deleteIMessageRecipient();
         await refreshIMessageStatus();
       }}
-      onStartRoom={(goal) => launchCodexRoomRun(state, goal)}
+      onStartRoom={async (goal) => {
+        const result = await launchCodexRoomRun(state, goal);
+        if (state.activeChannelId) await store.refreshChannelMessages(state.activeChannelId);
+        return result;
+      }}
       onEmergencyStop={async () => {
         const workspaceId = state.identity?.workspaceId;
         if (!workspaceId) throw new Error("No signed-in workspace is ready for the fleet switch.");
