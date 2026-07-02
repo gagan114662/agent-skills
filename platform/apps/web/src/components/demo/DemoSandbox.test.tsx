@@ -132,6 +132,24 @@ describe("DemoSandbox (#610)", () => {
     expect(calls).toEqual(["/onboarding/deliverable?url=tomo.ai"]);
   });
 
+  it("auto-builds from a ?url= query param so a pre-hydration native form submit still fires the API", async () => {
+    // Before React hydrates, the submit button falls back to a native GET submit that reloads the page to
+    // `/demo?url=<site>` (the form has no action/method). Reading that param on mount makes the demo work
+    // even when JS is slow to attach — the reloaded page auto-runs instead of showing a dead, empty form.
+    const { impl, calls } = okFetch();
+    render(<DemoSandbox fetchImpl={impl} revealDelayMs={0} initialUrl="acme.com" />);
+
+    await waitFor(() => expect(screen.getByText("Acme's first-week growth teardown")).toBeInTheDocument());
+    expect(calls).toEqual(["/onboarding/deliverable?url=acme.com"]);
+  });
+
+  it("ignores an empty ?url= param and stays on the entry form", () => {
+    const { impl, calls } = okFetch();
+    render(<DemoSandbox fetchImpl={impl} revealDelayMs={0} initialUrl="  " />);
+    expect(screen.getByLabelText(/your website/i)).toBeInTheDocument();
+    expect(calls).toEqual([]);
+  });
+
   it("refuses to fetch an empty URL and shows an inline error", () => {
     const { impl, calls } = okFetch();
     render(<DemoSandbox fetchImpl={impl} revealDelayMs={0} />);
