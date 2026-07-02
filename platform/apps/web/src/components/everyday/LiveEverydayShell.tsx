@@ -27,6 +27,11 @@ import {
   teamEventFriendlyLine,
 } from "./everyday-agent-text.js";
 import {
+  CMO_SUMMARY_ENABLED,
+  CMO_SUMMARY_OWNER_WORKSPACE_ID,
+  shouldShowCmoSummary,
+} from "./cmo-summary-flag.js";
+import {
   defaultConnectors,
   emptyEverydayData,
   type AgentLane,
@@ -988,6 +993,11 @@ export function LiveEverydayShell({
   }
 
   const data = liveEverydayDataFromState(state, firstRun, codexStatus);
+  const showCmoSummary = shouldShowCmoSummary({
+    flagOn: CMO_SUMMARY_ENABLED,
+    ownerWorkspaceId: CMO_SUMMARY_OWNER_WORKSPACE_ID,
+    workspaceId: state.identity?.workspaceId,
+  });
   return (
     <EverydayShell
       data={{
@@ -1035,6 +1045,7 @@ export function LiveEverydayShell({
       dashboardFirst={dashboardFirst}
       dashboardOnly={dashboardOnly}
       theme={theme}
+      showCmoSummary={showCmoSummary}
     />
   );
 }

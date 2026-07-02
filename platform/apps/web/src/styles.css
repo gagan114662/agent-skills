@@ -9605,6 +9605,123 @@ body[data-public-surface="light"],
   display: grid;
   gap: 18px;
 }
+/* #1456 — the <10s CMO summary strip: six honest, provenance-badged tiles above the brief. */
+.everyday-cmo {
+  margin: 0 0 18px;
+  display: grid;
+  gap: 10px;
+}
+.everyday-cmo__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.everyday-cmo__tile {
+  min-width: 0;
+  min-height: 118px;
+  border: 1px solid var(--ed-border);
+  border-radius: var(--ed-radius);
+  background: var(--ed-bg);
+  padding: 14px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+.everyday-cmo__tile[data-provenance="blocked"] {
+  border-color: color-mix(in srgb, #ff8a9b 40%, var(--ed-border));
+}
+.everyday-cmo__tile[data-provenance="not_connected"] {
+  border-style: dashed;
+}
+.everyday-cmo__label {
+  color: var(--ed-text-dim);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.everyday-cmo__value {
+  color: var(--ed-text);
+  font-family: var(--ed-serif);
+  font-size: 26px;
+  line-height: 1.1;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.everyday-cmo__badge {
+  width: fit-content;
+  border: 1px solid var(--ed-border);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--ed-text-dim);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.everyday-cmo__badge[data-provenance="receipt"] {
+  border-color: color-mix(in srgb, #bdf58b 48%, var(--ed-border));
+  color: #bdf58b;
+}
+.everyday-cmo__badge[data-provenance="blocked"] {
+  border-color: color-mix(in srgb, #ff8a9b 50%, var(--ed-border));
+  color: #ff8a9b;
+}
+.everyday-cmo__badge[data-provenance="not_connected"] {
+  border-color: color-mix(in srgb, #ffe082 44%, var(--ed-border));
+  color: #ffe082;
+}
+.everyday-cmo__detail {
+  color: var(--ed-text-dim);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.everyday-cmo__receipt {
+  width: fit-content;
+  color: var(--ed-pop);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.everyday-cmo__receipt:hover {
+  text-decoration: underline;
+}
+.everyday-cmo__needs-owner {
+  color: #ff8a9b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.everyday-cmo__upgrade {
+  border: 1px solid color-mix(in srgb, var(--ed-pop) 40%, var(--ed-border));
+  border-radius: var(--ed-radius);
+  background: color-mix(in srgb, var(--ed-pop) 8%, var(--ed-bg));
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+}
+.everyday-cmo__upgrade span {
+  color: var(--ed-text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.everyday-cmo__upgrade strong {
+  color: var(--ed-pop);
+  font-size: 13px;
+  font-weight: 800;
+}
+.everyday-cmo__upgrade em {
+  color: var(--ed-text-dim);
+  font-size: 11px;
+  font-style: normal;
+}
 .everyday-dashboard__head {
   display: grid;
   grid-template-columns: minmax(220px, 0.7fr) minmax(360px, 1fr);
@@ -10737,6 +10854,9 @@ body[data-public-surface="light"],
   }
   .everyday-room__grid {
     grid-template-columns: 1fr;
+  }
+  .everyday-cmo__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .everyday-dashboard__head,
   .everyday-dashboard__executive ol,

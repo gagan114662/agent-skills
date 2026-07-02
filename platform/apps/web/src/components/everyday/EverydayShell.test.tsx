@@ -455,6 +455,110 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
   });
 });
 
+describe("EverydayShell — CMO summary strip (#1456) provenance is honest in every state", () => {
+  const connector = (
+    id: string,
+    group: EverydayData["connectors"][number]["group"],
+    status: EverydayData["connectors"][number]["status"],
+    name = id,
+  ): EverydayData["connectors"][number] => ({ id, group, name, status, detail: "", actionLabel: "connect" });
+
+  const receipt = (id: string): EverydayData["transparency"][number] => ({
+    id,
+    at: "2:14 pm",
+    action: "shipped a landing page revision",
+    href: "https://example.com/pr/" + id,
+    receiptLabel: "see the PR",
+  });
+
+  function strip(over: Partial<EverydayData> = {}) {
+    render(<EverydayShell data={emptyData(over)} dashboardFirst dashboardOnly showCmoSummary />);
+    return screen.getByRole("region", { name: "CMO summary" });
+  }
+
+  it("stays hidden by default (new surface ships default-OFF behind the owner-first flag)", () => {
+    render(<EverydayShell data={emptyData()} dashboardFirst dashboardOnly />);
+    expect(screen.queryByRole("region", { name: "CMO summary" })).not.toBeInTheDocument();
+  });
+
+  it("empty state: never fabricates a number, money stays owner-gated, internal zeros stay honest", () => {
+    const cmo = strip();
+    // all six CMO questions render
+    expect(within(cmo).getByText("pipeline touched")).toBeInTheDocument();
+    expect(within(cmo).getByText("qualified leads")).toBeInTheDocument();
+    expect(within(cmo).getByText("assets shipped")).toBeInTheDocument();
+    expect(within(cmo).getByText("spend / revenue")).toBeInTheDocument();
+    expect(within(cmo).getByText("waiting on you")).toBeInTheDocument();
+    expect(within(cmo).getByText("channels live")).toBeInTheDocument();
+    // unconnected sources read "not connected yet", NOT a fake "0"
+    expect(within(cmo).getAllByText("not connected yet").length).toBeGreaterThanOrEqual(3);
+    expect(within(cmo).getAllByText("not connected").length).toBeGreaterThan(0);
+    // money is blocked — needs owner, never auto
+    expect(within(cmo).getAllByText("blocked — needs owner").length).toBeGreaterThan(0);
+    expect(within(cmo).getAllByText("needs you").length).toBeGreaterThan(0);
+    // approvals + channels are internally measurable, so a real "0" is honest with a receipt badge
+    expect(within(cmo).getAllByText("receipt").length).toBeGreaterThanOrEqual(2);
+    // no upgrade prompt without real value behind a limit
+    expect(within(cmo).queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("partially-connected state: a connected source is receipt-backed, a blocked one needs the owner", () => {
+    const cmo = strip({
+      connectors: [
+        connector("hubspot", "marketing", "connected", "HubSpot"),
+        connector("ga4", "visibility", "blocked", "Analytics"),
+        connector("wordpress", "publishing", "available", "WordPress"),
+      ],
+    });
+    // leads sourced from a connected marketing connector → receipt
+    expect(within(cmo).getByText(/HubSpot connected/)).toBeInTheDocument();
+    // pipeline's only source (analytics) is blocked → blocked, needs owner
+    expect(within(cmo).getByText(/connect Analytics to track pipeline/)).toBeInTheDocument();
+    // channels honestly reports the blocked one
+    expect(within(cmo).getByText(/1 live · 1 blocked/)).toBeInTheDocument();
+  });
+
+  it("active-work state: shipped is a receipt-backed count with a real link, and a connect moment appears", () => {
+    const cmo = strip({
+      connectors: [
+        connector("wordpress", "publishing", "connected", "WordPress"),
+        connector("linkedin", "publishing", "blocked", "LinkedIn"),
+      ],
+      approvals: [
+        {
+          id: "ar-1",
+          approvalRequestId: "ar-1",
+          agent: "scout",
+          deliverable: { title: "draft", kind: "draft", preview: "hi" },
+          consequence: "sends an email",
+          costsMoney: false,
+        },
+        {
+          id: "ar-2",
+          approvalRequestId: "ar-2",
+          agent: "scout",
+          deliverable: { title: "draft", kind: "draft", preview: "hi" },
+          consequence: "spends ad budget",
+          costsMoney: true,
+        },
+      ],
+      transparency: [receipt("a"), receipt("b"), receipt("c")],
+    });
+    // shipped = 3 with a real receipt link
+    expect(within(cmo).getByText("3")).toBeInTheDocument();
+    const receiptLink = within(cmo).getByRole("link", { name: "see receipt" });
+    expect(receiptLink).toHaveAttribute("href", "https://example.com/pr/c");
+    // approvals = 2 waiting on the owner
+    expect(within(cmo).getByText("2")).toBeInTheDocument();
+    // upgrade/connect moment is tied to proven value behind a blocked channel
+    const note = within(cmo).getByRole("note");
+    expect(within(note).getByText("Connect LinkedIn")).toBeInTheDocument();
+    expect(within(note).getByText(/3 shipped receipt\(s\)/)).toBeInTheDocument();
+    // revenue is STILL blocked even though real work is landing
+    expect(within(cmo).getByText(/owner must connect billing/)).toBeInTheDocument();
+  });
+});
+
 describe("EverydayShell — approval queue is a ship decision (#572/#574/#632)", () => {
   it("renders the finished deliverable body, not internal chatter", () => {
     render(<EverydayShell data={seedEveryday()} />);
