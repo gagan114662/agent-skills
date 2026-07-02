@@ -127,7 +127,7 @@ function OutboundReceipts({ receipts }: { receipts: OutboundSendReceipt[] | unde
             <span className="connections__receipt-ref" title={CONNECTIONS.receiptRef}>
               {r.externalRef}
             </span>
-            <time className="connections__receipt-at" dateTime={new Date(r.observedAtMs).toISOString()}>
+            <time suppressHydrationWarning className="connections__receipt-at" dateTime={new Date(r.observedAtMs).toISOString()}>
               {new Date(r.observedAtMs).toLocaleString()}
             </time>
           </li>
