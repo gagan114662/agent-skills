@@ -159,7 +159,9 @@ describe("App root routing", () => {
     // The public pricing page renders with one CTA per plan.
     await screen.findByRole("heading", { name: PRICING.title });
     const proCta = screen.getByRole("link", {
-      name: new RegExp(`${PRICING.planCta}.*Pro`, "i"),
+      name: (name) =>
+        name.toLowerCase().includes(PRICING.planCta.toLowerCase()) &&
+        name.toLowerCase().includes("pro"),
     });
 
     // #1489 root cause guard: the plan CTA must be a browser-native anchor pointing straight at the
