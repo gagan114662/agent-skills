@@ -288,19 +288,26 @@ function PublicTrustLinks(): React.JSX.Element {
   );
 }
 
+/**
+ * Each hero stage seeds an editable brief when clicked (issue #1525). Every prompt carries a
+ * `<...>` placeholder the owner fills in — clicking never echoes the bare "label: detail" string.
+ * `MARKETING_ICON_PLACEHOLDER` is selected after insertion so the owner can type straight over it.
+ */
+const MARKETING_ICON_PLACEHOLDER = "<your product>";
+
 const MARKETING_ICON_ROW = [
-  { key: "market", label: "market", detail: "where to win" },
-  { key: "brief", label: "brief", detail: "one-line target" },
-  { key: "icp", label: "customer", detail: "ICP folder" },
-  { key: "site", label: "website", detail: "site read" },
-  { key: "insight", label: "insight", detail: "sharp truth" },
-  { key: "creative", label: "creative", detail: "platform draft" },
-  { key: "email", label: "email", detail: "reply ready" },
-  { key: "seo", label: "search", detail: "intent map" },
-  { key: "social", label: "social", detail: "channel test" },
-  { key: "paid", label: "paid", detail: "spend dial" },
-  { key: "approval", label: "approve", detail: "owner yes" },
-  { key: "receipt", label: "receipt", detail: "proof saved" },
+  { key: "market", label: "market", detail: "where to win", prompt: "Map where " + MARKETING_ICON_PLACEHOLDER + " can win first — the sharpest wedge market and why now" },
+  { key: "brief", label: "brief", detail: "one-line target", prompt: "Write a one-line growth brief for " + MARKETING_ICON_PLACEHOLDER + " aimed at its best-fit customer" },
+  { key: "icp", label: "customer", detail: "ICP folder", prompt: "Build the ideal-customer profile for " + MARKETING_ICON_PLACEHOLDER + ": who buys, their pain, and where they hang out" },
+  { key: "site", label: "website", detail: "site read", prompt: "Read " + MARKETING_ICON_PLACEHOLDER + "'s website and pull its positioning, proof points, and voice" },
+  { key: "insight", label: "insight", detail: "sharp truth", prompt: "Find the sharpest true insight about " + MARKETING_ICON_PLACEHOLDER + " we can build a campaign on" },
+  { key: "creative", label: "creative", detail: "platform draft", prompt: "Draft platform-native creative for " + MARKETING_ICON_PLACEHOLDER + " for the channel where its buyers already are" },
+  { key: "email", label: "email", detail: "reply ready", prompt: "Write a reply-ready cold email for " + MARKETING_ICON_PLACEHOLDER + " to its ideal customer" },
+  { key: "seo", label: "search", detail: "intent map", prompt: "Find buying-intent signals for " + MARKETING_ICON_PLACEHOLDER + " on Reddit and X and draft helpful replies" },
+  { key: "social", label: "social", detail: "channel test", prompt: "Draft a week of social posts for " + MARKETING_ICON_PLACEHOLDER + " and test which channel lands" },
+  { key: "paid", label: "paid", detail: "spend dial", prompt: "Plan a starter paid-acquisition test for " + MARKETING_ICON_PLACEHOLDER + " with a clear spend cap" },
+  { key: "approval", label: "approve", detail: "owner yes", prompt: "Show me what's ready to ship for " + MARKETING_ICON_PLACEHOLDER + " so I can approve or reject each item" },
+  { key: "receipt", label: "receipt", detail: "proof saved", prompt: "Summarize the receipts and proof for the work done on " + MARKETING_ICON_PLACEHOLDER },
 ] as const;
 
 type MarketingIconItem = (typeof MARKETING_ICON_ROW)[number];
@@ -531,8 +538,19 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
               <PopMark className="onboard__mark" />
               <MarketingIconRow
                 onPick={(item) => {
-                  setInput(item.label + ": " + item.detail);
-                  inputRef.current?.focus();
+                  // #1525: scaffold an editable brief, not the bare "label: detail" echo.
+                  setInput(item.prompt);
+                  const field = inputRef.current;
+                  if (field) {
+                    field.focus();
+                    // Select the fill-in placeholder so the owner types straight over it.
+                    const start = item.prompt.indexOf(MARKETING_ICON_PLACEHOLDER);
+                    if (start >= 0) {
+                      window.requestAnimationFrame(() => {
+                        field.setSelectionRange(start, start + MARKETING_ICON_PLACEHOLDER.length);
+                      });
+                    }
+                  }
                 }}
               />
               <h1 className="onboard-door__greeting">{greeting(hour, props.name)}</h1>

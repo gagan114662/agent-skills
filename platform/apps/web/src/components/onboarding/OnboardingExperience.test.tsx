@@ -361,12 +361,27 @@ describe("OnboardingExperience (#784)", () => {
     }
   });
 
-  it("makes the marketing icons useful instead of dead decorative controls (#1525)", () => {
+  it("scaffolds an editable brief instead of echoing the bare label (#1525)", () => {
     render(<OnboardingExperience provider={fakeProvider()} connectMode="workspace" hour={14} />);
+    const field = screen.getByLabelText(/what are we marketing today/i);
 
     fireEvent.click(screen.getByRole("button", { name: /start with social: channel test/i }));
 
-    expect(screen.getByLabelText(/what are we marketing today/i)).toHaveValue("social: channel test");
+    const social = (field as HTMLInputElement).value;
+    // Never the bare "label: detail" echo that made the brief meaningless.
+    expect(social).not.toBe("social: channel test");
+    // A genuinely useful, editable brief with a fill-in placeholder to type over.
+    expect(social).toContain("<your product>");
+    expect(social.toLowerCase()).toContain("social");
+    expect(field).toHaveFocus();
+
+    // Each icon seeds its own distinct brief — none of them echo "label: detail".
+    fireEvent.click(screen.getByRole("button", { name: /start with search: intent map/i }));
+    const search = (field as HTMLInputElement).value;
+    expect(search).not.toBe("search: intent map");
+    expect(search).not.toBe(social);
+    expect(search).toContain("<your product>");
+    expect(search.toLowerCase()).toMatch(/intent|reddit/);
   });
 
   it("opens the selected messaging channel from the public door (#1521)", () => {
