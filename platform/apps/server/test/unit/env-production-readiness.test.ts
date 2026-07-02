@@ -73,7 +73,8 @@ describe("loadEnv production readiness", () => {
 
     expect(env.databaseUrl).toBe("postgres://prod.example/reload");
     expect(env.redisUrl).toBe("redis://prod.example:6379");
-    expect(env.agent.harness).toBe("codex");
+    // #1568: the prod posture executes on the Claude provider by default.
+    expect(env.agent.harness).toBe("claude-code");
     expect(env.deploy.provider).toBe("vercel");
     expect(env.billing.provider).toBe("stripe");
   });

@@ -1,5 +1,6 @@
 import type { RuntimeKind } from "../db/repositories/agent-sessions.js";
 import type { HarnessKind } from "./harness.js";
+import { harnessForProvider, DEFAULT_RUNTIME_PROVIDER, type RuntimeProvider } from "./provider.js";
 
 /**
  * Posture profiles (#69, ADR-0038).
@@ -32,7 +33,8 @@ export interface Profile {
 
 export const PROFILES: Record<ProfileName, Profile> = {
   dev: { runtime: "local", harness: "demo" },
-  prod: { runtime: "sandbox", harness: "codex" },
+  // #1568: the prod harness follows the resolved runtime provider (Claude default) — see profilePreset.
+  prod: { runtime: "sandbox", harness: harnessForProvider(DEFAULT_RUNTIME_PROVIDER) },
 };
 
 /** The default posture: local/demo, so CI and a fresh clone need no cloud. */
@@ -43,7 +45,15 @@ export function parseProfile(value: string | undefined): ProfileName {
   return value === "prod" ? "prod" : "dev";
 }
 
-/** The `{ runtime, harness }` preset for a profile. */
-export function profilePreset(name: ProfileName): Profile {
+/**
+ * The `{ runtime, harness }` preset for a profile. The `prod` harness is provider-driven (#1568):
+ * `claude` (the default) runs the fleet on the Claude Code CLI; `AGENT_RUNTIME_PROVIDER=codex`
+ * restores the legacy Codex posture. `dev` ignores the provider — it stays demo (no model spend).
+ */
+export function profilePreset(
+  name: ProfileName,
+  provider: RuntimeProvider = DEFAULT_RUNTIME_PROVIDER,
+): Profile {
+  if (name === "prod") return { runtime: "sandbox", harness: harnessForProvider(provider) };
   return PROFILES[name];
 }
