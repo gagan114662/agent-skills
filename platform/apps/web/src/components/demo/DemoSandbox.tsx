@@ -26,6 +26,7 @@ import {
   type FetchLike,
 } from "../../api/demo.js";
 import { trackAcquisitionEvent } from "../../acquisition-events.js";
+import { publicThemeStyle, usePublicLightTheme } from "../../design/public-theme.js";
 
 /** Human label per deliverable kind — mirrors the onboarding deliverable badges so styling is shared. */
 const KIND_LABEL: Record<DemoSectionDto["kind"], string> = {
@@ -74,6 +75,7 @@ const DEFAULT_REVEAL_MS = 650;
 
 export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
   const { fetchImpl, revealDelayMs = DEFAULT_REVEAL_MS } = props;
+  usePublicLightTheme();
 
   const [input, setInput] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -200,7 +202,7 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
   const sections = plan?.sections.slice(0, revealed) ?? [];
 
   return (
-    <div className="demo">
+    <div className="demo public-surface" style={publicThemeStyle(["o"])}>
       <PublicDoorNav className="demo__nav" startHref={TELEGRAM_BOT_URL} />
       <header className="demo__head">
         <p className="demo__eyebrow">{COPY.eyebrow}</p>

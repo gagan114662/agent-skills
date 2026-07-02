@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { IPOP_PUBLIC_THEME } from "./public-theme.js";
 
 export interface IpopExperienceTokens {
   readonly color: {
@@ -43,13 +44,13 @@ export const ipopExperienceTokens: IpopExperienceTokens = {
 export const ipopExperienceLightTokens: IpopExperienceTokens = {
   ...ipopExperienceTokens,
   color: {
-    canvas: "#fff7b3",
+    canvas: IPOP_PUBLIC_THEME.bg,
     surface: "rgba(255, 255, 255, 0.72)",
-    raised: "#fffdf0",
+    raised: IPOP_PUBLIC_THEME.surface,
     border: "rgba(17, 17, 17, 0.12)",
-    text: "#17120f",
+    text: IPOP_PUBLIC_THEME.text,
     textDim: "rgba(23, 18, 15, 0.66)",
-    accent: "#ff5470",
+    accent: IPOP_PUBLIC_THEME.accent,
     onAccent: "#2a0a12",
   },
 };

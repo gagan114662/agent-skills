@@ -12,7 +12,7 @@ import { TELEGRAM_BOT_URL } from "./components/onboarding/messaging-entry.js";
 import { LiveEverydayShell } from "./components/everyday/LiveEverydayShell.js";
 import { EverydayShell } from "./components/everyday/EverydayShell.js";
 import { emptyEverydayData } from "./components/everyday/everyday-data.js";
-import { experienceTokenStyle } from "./design/ipop-experience-tokens.js";
+import { publicThemeStyle, usePublicLightTheme } from "./design/public-theme.js";
 import { APP_ROUTES, navigate, useRoute } from "./routing.js";
 import { useAppState, useStore } from "./store/StoreContext.js";
 
@@ -58,6 +58,7 @@ function AuthedHome(): React.JSX.Element {
 function DashboardRoute(): React.JSX.Element {
   const store = useStore();
   const { phase } = useAppState();
+  usePublicLightTheme();
 
   useEffect(() => {
     void store.bootstrap();
@@ -69,7 +70,10 @@ function DashboardRoute(): React.JSX.Element {
   else dashboard = <EverydayShell data={emptyEverydayData()} dashboardFirst dashboardOnly theme="public" />;
 
   return (
-    <div className="public-dashboard" style={experienceTokenStyle("onboarding")}>
+    <div
+      className="public-dashboard public-surface"
+      style={publicThemeStyle(["o"])}
+    >
       <PublicDoorNav className="public-dashboard__nav" startHref={TELEGRAM_BOT_URL} />
       <h1 className="sr-only">Marketing dashboard</h1>
       {dashboard}

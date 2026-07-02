@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SUPPORT_CONTACT } from "../../brand.js";
 import { api, googleStartUrl } from "../../api/client.js";
-import { experienceTokenStyle } from "../../design/ipop-experience-tokens.js";
+import { publicThemeStyle, usePublicLightTheme } from "../../design/public-theme.js";
 import { APP_ROUTES, navigate } from "../../routing.js";
 import { PopMark } from "../PopMark.js";
 import { ONBOARD_COPY, greeting } from "./copy.js";
@@ -371,6 +371,7 @@ function MessagingChannelRail({
 
 export function OnboardingExperience(props: OnboardingExperienceProps): React.JSX.Element {
   const provider = props.provider ?? createDefaultProvider();
+  usePublicLightTheme();
   const hour = props.hour ?? new Date().getHours();
   const onEnterApp = props.onEnterApp ?? (() => navigate(APP_ROUTES.home));
   const onOpenWorkspace = props.onOpenWorkspace;
@@ -510,7 +511,11 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
   const nextConnector = CONNECTORS[connectedCount];
 
   return (
-    <div className="onboard" data-phase={phase} style={experienceTokenStyle("onboarding")}>
+    <div
+      className="onboard public-surface"
+      data-phase={phase}
+      style={publicThemeStyle(["o"])}
+    >
       <div className="onboard-sunscape" aria-hidden="true">
         <span className="onboard-sunscape__ray onboard-sunscape__ray--one" />
         <span className="onboard-sunscape__ray onboard-sunscape__ray--two" />
