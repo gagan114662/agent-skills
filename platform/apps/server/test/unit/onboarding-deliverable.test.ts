@@ -9,7 +9,7 @@ import {
   readSiteSnapshot,
   type SiteSnapshot,
 } from "../../src/onboarding/deliverable.js";
-import type { HostResolver } from "../../src/security/public-web-url.js";
+import type { HostResolver, PublicWebFetch } from "../../src/security/public-web-url.js";
 
 /**
  * Unit test for the #633 outcome-first deliverable generator. It must turn an untrusted typed URL into a
@@ -19,7 +19,11 @@ import type { HostResolver } from "../../src/security/public-web-url.js";
 
 describe("deriveBusiness (#633)", () => {
   it("accepts a bare domain and normalizes it", () => {
-    expect(deriveBusiness("acme.com")).toEqual({ url: "https://acme.com", host: "acme.com", name: "Acme" });
+    expect(deriveBusiness("acme.com")).toEqual({
+      url: "https://acme.com",
+      host: "acme.com",
+      name: "Acme",
+    });
   });
 
   it("strips www, lower-cases the host, and keeps a path", () => {
@@ -95,7 +99,9 @@ describe("parseSiteSnapshot (#1530)", () => {
       '<!doctype html><title>Café niños</title><meta name="description" content="营销 creadores"><h1>营销</h1>',
     );
 
-    expect(parsed?.keywords).toEqual(expect.arrayContaining(["café", "niños", "营销", "creadores"]));
+    expect(parsed?.keywords).toEqual(
+      expect.arrayContaining(["café", "niños", "营销", "creadores"]),
+    );
   });
 });
 
@@ -111,11 +117,15 @@ function htmlResponse(body = "<title>Acme Growth</title><h1>Book better demos</h
 
 describe("readSiteSnapshot SSRF guard (#1530)", () => {
   it("resolves the hostname and refuses private DNS answers before fetching", async () => {
-    const fetchImpl = vi.fn<typeof fetch>();
+    const fetchImpl = vi.fn<PublicWebFetch>();
     const resolver: HostResolver = async () => [{ address: "192.168.1.10", family: 4 }];
 
     await expect(
-      readSiteSnapshot({ url: "http://private.example", host: "private.example", name: "Private" }, fetchImpl, resolver),
+      readSiteSnapshot(
+        { url: "http://private.example", host: "private.example", name: "Private" },
+        fetchImpl,
+        resolver,
+      ),
     ).resolves.toBeNull();
 
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -132,61 +142,91 @@ describe("readSiteSnapshot SSRF guard (#1530)", () => {
     ["IPv6 unique local", "fc00::1", 6],
     ["IPv6 mapped metadata", "::ffff:169.254.169.254", 6],
   ])("blocks %s DNS answers before fetching", async (_label, address, family) => {
-    const fetchImpl = vi.fn<typeof fetch>();
-    const resolver: HostResolver = async () => [{ address: String(address), family: Number(family) }];
+    const fetchImpl = vi.fn<PublicWebFetch>();
+    const resolver: HostResolver = async () => [
+      { address: String(address), family: Number(family) },
+    ];
 
     await expect(
-      readSiteSnapshot({ url: "https://public.example", host: "public.example", name: "Public" }, fetchImpl, resolver),
+      readSiteSnapshot(
+        { url: "https://public.example", host: "public.example", name: "Public" },
+        fetchImpl,
+        resolver,
+      ),
     ).resolves.toBeNull();
 
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("rejects non-standard ports before fetching", async () => {
-    const fetchImpl = vi.fn<typeof fetch>();
+    const fetchImpl = vi.fn<PublicWebFetch>();
 
     await expect(
-      readSiteSnapshot({ url: "https://acme.com:8443", host: "acme.com", name: "Acme" }, fetchImpl, publicResolver),
+      readSiteSnapshot(
+        { url: "https://acme.com:8443", host: "acme.com", name: "Acme" },
+        fetchImpl,
+        publicResolver,
+      ),
     ).resolves.toBeNull();
 
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("validates each redirect hop and blocks private destinations", async () => {
-    const fetchImpl = vi.fn<typeof fetch>(async () => {
-      return new Response(null, { status: 302, headers: { location: "http://private.example/admin" } });
+    const fetchImpl = vi.fn<PublicWebFetch>(async () => {
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://private.example/admin" },
+      });
     });
 
     await expect(
-      readSiteSnapshot({ url: "http://acme.com", host: "acme.com", name: "Acme" }, fetchImpl, publicResolver),
+      readSiteSnapshot(
+        { url: "http://acme.com", host: "acme.com", name: "Acme" },
+        fetchImpl,
+        publicResolver,
+      ),
     ).resolves.toBeNull();
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).toHaveBeenCalledWith("http://acme.com/", expect.objectContaining({ redirect: "manual" }));
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://acme.com/",
+      expect.objectContaining({ redirect: "manual" }),
+    );
   });
 
   it("blocks hex and abbreviated numeric redirect hosts before URL normalization can hide them", async () => {
-    const fetchImpl = vi.fn<typeof fetch>(async () => {
+    const fetchImpl = vi.fn<PublicWebFetch>(async () => {
       return new Response(null, { status: 302, headers: { location: "http://2130706433/secret" } });
     });
 
     await expect(
-      readSiteSnapshot({ url: "http://acme.com", host: "acme.com", name: "Acme" }, fetchImpl, publicResolver),
+      readSiteSnapshot(
+        { url: "http://acme.com", host: "acme.com", name: "Acme" },
+        fetchImpl,
+        publicResolver,
+      ),
     ).resolves.toBeNull();
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("follows safe redirects and parses the final public page", async () => {
-    const fetchImpl = vi.fn<typeof fetch>(async (url) => {
+    const fetchImpl = vi.fn<PublicWebFetch>(async (url) => {
       if (url === "https://acme.com/") {
         return new Response(null, { status: 301, headers: { location: "/landing" } });
       }
-      return htmlResponse("<title>Acme Landing</title><h1>Turn visitors into pipeline</h1><a>Book a demo</a>");
+      return htmlResponse(
+        "<title>Acme Landing</title><h1>Turn visitors into pipeline</h1><a>Book a demo</a>",
+      );
     });
 
     await expect(
-      readSiteSnapshot({ url: "https://acme.com", host: "acme.com", name: "Acme" }, fetchImpl, publicResolver),
+      readSiteSnapshot(
+        { url: "https://acme.com", host: "acme.com", name: "Acme" },
+        fetchImpl,
+        publicResolver,
+      ),
     ).resolves.toMatchObject({
       sourceUrl: "https://acme.com/landing",
       title: "Acme Landing",
@@ -197,15 +237,22 @@ describe("readSiteSnapshot SSRF guard (#1530)", () => {
   });
 
   it("returns a truthful deliverable snapshot when the public homepage serves an HTTP error", async () => {
-    const fetchImpl = vi.fn<typeof fetch>(async () => {
-      return new Response("<!doctype html><html><body></body></html>", {
-        status: 404,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+    const fetchImpl = vi.fn<PublicWebFetch>(async () => {
+      return new Response(
+        "<!doctype html><title>Page not found | Wix.com</title><h1>This domain is not connected</h1>",
+        {
+          status: 404,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        },
+      );
     });
 
     await expect(
-      readSiteSnapshot({ url: "https://getfoolish.com", host: "getfoolish.com", name: "Getfoolish" }, fetchImpl, publicResolver),
+      readSiteSnapshot(
+        { url: "https://getfoolish.com", host: "getfoolish.com", name: "Getfoolish" },
+        fetchImpl,
+        publicResolver,
+      ),
     ).resolves.toMatchObject({
       sourceUrl: "https://getfoolish.com/",
       status: 404,
@@ -238,11 +285,15 @@ describe("buildDeliverable (#633)", () => {
   });
 
   it("is deterministic for the same business", () => {
-    expect(buildDeliverable(business, snapshot)).toEqual(buildDeliverable(deriveBusiness("acme.com")!, snapshot));
+    expect(buildDeliverable(business, snapshot)).toEqual(
+      buildDeliverable(deriveBusiness("acme.com")!, snapshot),
+    );
   });
 
   it("uses the site reader and returns null when the site cannot be read", async () => {
-    await expect(buildDeliverableForBusiness(business, async () => snapshot)).resolves.toMatchObject({
+    await expect(
+      buildDeliverableForBusiness(business, async () => snapshot),
+    ).resolves.toMatchObject({
       siteRead: snapshot,
     });
     await expect(buildDeliverableForBusiness(business, async () => null)).resolves.toBeNull();

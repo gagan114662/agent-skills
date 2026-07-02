@@ -1,5 +1,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import type { LookupFunction } from "node:net";
+import { Agent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from "undici";
 
 export interface ResolvedHostAddress {
   address: string;
@@ -7,13 +9,34 @@ export interface ResolvedHostAddress {
 }
 
 export type HostResolver = (hostname: string) => Promise<readonly ResolvedHostAddress[]>;
+export type PublicWebFetch = (input: string | URL, init?: UndiciRequestInit) => Promise<Response>;
 
-export async function defaultPublicWebHostResolver(hostname: string): Promise<ResolvedHostAddress[]> {
+export interface ValidatedPublicWebUrl {
+  url: URL;
+  hostname: string;
+  address: string;
+  family: 4 | 6;
+}
+
+export interface PinnedPublicWebResponse {
+  response: Response;
+  close(): Promise<void>;
+}
+
+export const defaultPublicWebFetch = undiciFetch as unknown as PublicWebFetch;
+
+export async function defaultPublicWebHostResolver(
+  hostname: string,
+): Promise<ResolvedHostAddress[]> {
   return dnsLookup(hostname, { all: true, verbatim: true });
 }
 
 export function normalizePublicHostname(hostname: string): string {
-  return hostname.trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  return hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "");
 }
 
 export function extractRawAbsoluteHostname(rawUrl: string): string | null {
@@ -85,7 +108,10 @@ function expandIpv6(address: string): number[] | null {
   if (embeddedIpv4 && ipv4Literal) {
     const [a, b, c, d] = embeddedIpv4;
     normalized =
-      lower.slice(0, -ipv4Literal.length) + ((a << 8) | b).toString(16) + ":" + ((c << 8) | d).toString(16);
+      lower.slice(0, -ipv4Literal.length) +
+      ((a << 8) | b).toString(16) +
+      ":" +
+      ((c << 8) | d).toString(16);
   }
 
   const halves = normalized.split("::");
@@ -94,7 +120,8 @@ function expandIpv6(address: string): number[] | null {
   const right = halves[1] ? halves[1].split(":").filter(Boolean) : [];
   const missing = halves.length === 2 ? 8 - left.length - right.length : 0;
   if (missing < 0) return null;
-  const groups = halves.length === 2 ? [...left, ...Array<string>(missing).fill("0"), ...right] : left;
+  const groups =
+    halves.length === 2 ? [...left, ...Array<string>(missing).fill("0"), ...right] : left;
   if (groups.length !== 8) return null;
   const words = groups.map((group) => Number.parseInt(group, 16));
   if (words.some((word) => !Number.isInteger(word) || word < 0 || word > 0xffff)) return null;
@@ -112,9 +139,16 @@ export function isBlockedPublicIpv6(address: string): boolean {
   const second = bytes[1] ?? 0;
   const allZero = bytes.every((byte) => byte === 0);
   const loopback = bytes.slice(0, 15).every((byte) => byte === 0) && bytes[15] === 1;
-  const ipv4Mapped = bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
+  const ipv4Mapped =
+    bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
   const ipv4Compatible = bytes.slice(0, 12).every((byte) => byte === 0) && !allZero;
-  if (ipv4Mapped || ipv4Compatible) {
+  const nat64Mapped =
+    first === 0x00 &&
+    second === 0x64 &&
+    bytes[2] === 0xff &&
+    bytes[3] === 0x9b &&
+    bytes.slice(4, 12).every((byte) => byte === 0);
+  if (ipv4Mapped || ipv4Compatible || nat64Mapped) {
     const embedded = bytes.slice(12, 16).join(".");
     return isBlockedPublicIpv4(embedded);
   }
@@ -135,7 +169,8 @@ export function isBlockedPublicAddress(address: string): boolean {
 
 export function isBlockedPublicHostnameLiteral(hostname: string): boolean {
   const host = normalizePublicHostname(hostname);
-  if (host === "" || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host === "" || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local"))
+    return true;
   if (isSuspiciousNumericHostLiteral(host)) return true;
   return isIP(host) !== 0 && isBlockedPublicAddress(host);
 }
@@ -151,7 +186,7 @@ export async function validatePublicWebUrl(
   rawUrl: string,
   resolver: HostResolver = defaultPublicWebHostResolver,
   base?: URL,
-): Promise<URL | null> {
+): Promise<ValidatedPublicWebUrl | null> {
   const rawHost = extractRawAbsoluteHostname(rawUrl);
   if (rawHost && isSuspiciousNumericHostLiteral(rawHost)) return null;
 
@@ -167,7 +202,9 @@ export async function validatePublicWebUrl(
 
   const hostname = normalizePublicHostname(url.hostname);
   if (isBlockedPublicHostnameLiteral(hostname)) return null;
-  if (isIP(hostname)) return url;
+  const literalFamily = isIP(hostname);
+  if (literalFamily === 4 || literalFamily === 6)
+    return { url, hostname, address: hostname, family: literalFamily };
 
   let resolved: readonly ResolvedHostAddress[];
   try {
@@ -176,5 +213,89 @@ export async function validatePublicWebUrl(
     return null;
   }
   if (resolved.length === 0) return null;
-  return resolved.some(({ address }) => isBlockedPublicAddress(address)) ? null : url;
+  if (resolved.some(({ address }) => isBlockedPublicAddress(address))) return null;
+  const first = resolved[0];
+  if (!first) return null;
+  const family = isIP(first.address);
+  if (family !== 4 && family !== 6) return null;
+  return { url, hostname, address: first.address, family };
+}
+
+export function createPinnedPublicWebLookup(target: ValidatedPublicWebUrl): LookupFunction {
+  return (hostname, _options, callback) => {
+    const requested = normalizePublicHostname(hostname);
+    if (requested !== target.hostname) {
+      const err = new Error(
+        "refusing DNS lookup for unvalidated host " + hostname,
+      ) as NodeJS.ErrnoException;
+      err.code = "ENOTFOUND";
+      callback(err, "", target.family);
+      return;
+    }
+    callback(null, target.address, target.family);
+  };
+}
+
+export function createPinnedPublicWebDispatcher(target: ValidatedPublicWebUrl): Agent {
+  return new Agent({
+    connect: { lookup: createPinnedPublicWebLookup(target), family: target.family },
+    keepAliveMaxTimeout: 1,
+    keepAliveTimeout: 1,
+  });
+}
+
+export async function fetchPinnedPublicWebUrl(
+  target: ValidatedPublicWebUrl,
+  init: UndiciRequestInit,
+  fetchImpl: PublicWebFetch = defaultPublicWebFetch,
+): Promise<PinnedPublicWebResponse> {
+  const dispatcher = createPinnedPublicWebDispatcher(target);
+  try {
+    const response = await fetchImpl(target.url.href, { ...init, dispatcher });
+    return {
+      response,
+      close: () => dispatcher.close(),
+    };
+  } catch (error) {
+    dispatcher.destroy(error instanceof Error ? error : null);
+    throw error;
+  }
+}
+
+export async function readPublicWebResponseText(
+  response: Response,
+  maxBytes: number,
+): Promise<string | null> {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength) {
+    const bytes = Number(contentLength);
+    if (Number.isFinite(bytes) && bytes > maxBytes) return null;
+  }
+
+  if (!response.body) {
+    const text = await response.text().catch(() => "");
+    return new TextEncoder().encode(text).byteLength > maxBytes ? null : text;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return text;
+  } catch {
+    await reader.cancel().catch(() => undefined);
+    return null;
+  }
 }

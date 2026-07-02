@@ -2,14 +2,18 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   DryRunSiteReaderProvider,
   LiveSiteReaderProvider,
+  MAX_PAGE_BYTES,
   type SiteReaderProvider,
 } from "../../src/marketing/site-reader/provider.js";
 import {
   shouldReadSiteContent,
   createSiteReader,
 } from "../../src/marketing/site-reader/service.js";
-import { composeSiteFactsBlock, type FetchedPage } from "../../src/marketing/site-reader/distill.js";
-import type { HostResolver } from "../../src/security/public-web-url.js";
+import {
+  composeSiteFactsBlock,
+  type FetchedPage,
+} from "../../src/marketing/site-reader/distill.js";
+import type { HostResolver, PublicWebFetch } from "../../src/security/public-web-url.js";
 
 /**
  * #363 — the IO half of the public-site reader: provider (DryRun default + Live same-origin crawl) and
@@ -24,19 +28,25 @@ afterEach(() => vi.unstubAllGlobals());
 function stubFetch(pages: Record<string, { status: number; html: string }>): void {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: string | URL) => {
+    vi.fn<PublicWebFetch>(async (input) => {
       const url = typeof input === "string" ? input : input.toString();
       const hit = pages[url];
       if (!hit) throw new Error(`unmapped ${url}`);
-      return { status: hit.status, text: async () => hit.html } as unknown as Response;
+      return new Response(hit.html, {
+        status: hit.status,
+        headers: { "content-type": "text/html" },
+      });
     }),
   );
 }
 
 const publicResolver: HostResolver = async () => [{ address: "93.184.216.34", family: 4 }];
 
-function liveProvider(resolver: HostResolver = publicResolver): LiveSiteReaderProvider {
-  return new LiveSiteReaderProvider(undefined, undefined, resolver);
+function liveProvider(
+  resolver: HostResolver = publicResolver,
+  fetchImpl: PublicWebFetch = fetch as PublicWebFetch,
+): LiveSiteReaderProvider {
+  return new LiveSiteReaderProvider(undefined, undefined, resolver, fetchImpl);
 }
 
 describe("DryRunSiteReaderProvider (#363 default — reads nothing)", () => {
@@ -52,7 +62,7 @@ describe("LiveSiteReaderProvider (#363 — same-origin read-only crawl)", () => 
       "https://ipop.ai/": {
         status: 200,
         html:
-          '<html><head><title>ipop.ai</title></head><body>' +
+          "<html><head><title>ipop.ai</title></head><body>" +
           '<a href="/pricing">Pricing</a>' +
           '<a href="https://evil.com/steal">offsite</a>' +
           '<a href="mailto:x@y.com">mail</a>' +
@@ -75,7 +85,7 @@ describe("LiveSiteReaderProvider (#363 — same-origin read-only crawl)", () => 
   });
 
   it("refuses private DNS answers before fetching a seed", async () => {
-    const fetchImpl = vi.fn();
+    const fetchImpl = vi.fn<PublicWebFetch>();
     vi.stubGlobal("fetch", fetchImpl);
     const privateResolver: HostResolver = async () => [{ address: "10.0.0.8", family: 4 }];
 
@@ -86,7 +96,7 @@ describe("LiveSiteReaderProvider (#363 — same-origin read-only crawl)", () => 
   });
 
   it("refuses hex, abbreviated, and non-standard-port numeric seeds before fetching", async () => {
-    const fetchImpl = vi.fn();
+    const fetchImpl = vi.fn<PublicWebFetch>();
     vi.stubGlobal("fetch", fetchImpl);
     const provider = liveProvider();
 
@@ -98,8 +108,11 @@ describe("LiveSiteReaderProvider (#363 — same-origin read-only crawl)", () => 
   });
 
   it("validates redirect hops and blocks private redirect destinations", async () => {
-    const fetchImpl = vi.fn<typeof fetch>(async () => {
-      return new Response(null, { status: 302, headers: { location: "http://private.example/admin" } });
+    const fetchImpl = vi.fn<PublicWebFetch>(async () => {
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://private.example/admin" },
+      });
     });
     vi.stubGlobal("fetch", fetchImpl);
     const resolver: HostResolver = async (hostname) =>
@@ -111,7 +124,24 @@ describe("LiveSiteReaderProvider (#363 — same-origin read-only crawl)", () => 
 
     expect(pages).toEqual([]);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).toHaveBeenCalledWith("https://ipop.ai/", expect.objectContaining({ redirect: "manual" }));
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://ipop.ai/",
+      expect.objectContaining({ redirect: "manual" }),
+    );
+  });
+
+  it("skips oversized pages before buffering response bodies", async () => {
+    const fetchImpl = vi.fn<PublicWebFetch>(async () => {
+      return new Response("<title>too large</title>", {
+        status: 200,
+        headers: { "content-length": String(MAX_PAGE_BYTES + 1), "content-type": "text/html" },
+      });
+    });
+
+    const pages = await liveProvider(publicResolver, fetchImpl).fetchPages("https://ipop.ai/");
+
+    expect(pages).toEqual([]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("skips a page whose fetch throws, never failing the whole crawl", async () => {
@@ -129,9 +159,15 @@ describe("shouldReadSiteContent gate (#363 default-OFF, owner-first)", () => {
 
   it("is OFF unless preamble injection, the read flag, and the owner workspace all line up", () => {
     expect(shouldReadSiteContent({}, "ipop")).toBe(false);
-    expect(shouldReadSiteContent({ readSiteContent: true, ownerWorkspaceId: "ipop" }, "ipop")).toBe(false); // preamble off
-    expect(shouldReadSiteContent({ injectWorkspaceContext: true, ownerWorkspaceId: "ipop" }, "ipop")).toBe(false); // read flag off
-    expect(shouldReadSiteContent({ injectWorkspaceContext: true, readSiteContent: true }, "ipop")).toBe(false); // no owner named
+    expect(shouldReadSiteContent({ readSiteContent: true, ownerWorkspaceId: "ipop" }, "ipop")).toBe(
+      false,
+    ); // preamble off
+    expect(
+      shouldReadSiteContent({ injectWorkspaceContext: true, ownerWorkspaceId: "ipop" }, "ipop"),
+    ).toBe(false); // read flag off
+    expect(
+      shouldReadSiteContent({ injectWorkspaceContext: true, readSiteContent: true }, "ipop"),
+    ).toBe(false); // no owner named
     expect(shouldReadSiteContent(ON, "customer")).toBe(false); // not the owner workspace
   });
 
@@ -166,7 +202,11 @@ describe("createSiteReader cache (#363)", () => {
     const provider: SiteReaderProvider = {
       kind: "fake",
       fetchPages: async (): Promise<FetchedPage[]> => [
-        { url: "https://ipop.ai/", status: 200, html: "<title>ipop.ai</title><h1>Marketing that runs itself</h1>" },
+        {
+          url: "https://ipop.ai/",
+          status: 200,
+          html: "<title>ipop.ai</title><h1>Marketing that runs itself</h1>",
+        },
       ],
     };
     const reader = createSiteReader({ provider });
