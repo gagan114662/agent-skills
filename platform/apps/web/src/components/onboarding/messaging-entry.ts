@@ -39,10 +39,17 @@ export function telegramDeepLink(input: string): string {
 export function telegramStartPayload(input: string): string {
   const trimmed = input.trim();
   if (trimmed === "") return "";
-  // Cap the UTF-8 source at 48 bytes so the base64url payload stays within Telegram's 64-char limit.
-  const bytes = new TextEncoder().encode(trimmed).slice(0, 48);
+  // Cap the UTF-8 source at 48 bytes (→ 64 base64 chars, Telegram's start limit) but only ever add WHOLE
+  // code points, so a multi-byte character (emoji, CJK) is never split mid-sequence into invalid UTF-8.
+  const encoder = new TextEncoder();
   let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
+  let byteCount = 0;
+  for (const char of trimmed) {
+    const encoded = encoder.encode(char);
+    if (byteCount + encoded.length > 48) break;
+    for (const byte of encoded) binary += String.fromCharCode(byte);
+    byteCount += encoded.length;
+  }
   // btoa is present in browsers (DOM) and the SSR runtime (Node ≥16), so no polyfill is needed.
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

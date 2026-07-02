@@ -32,6 +32,36 @@ describe("messaging-entry — Telegram deep-link payload (#1549)", () => {
     expect(payload).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 
+  const decodePayload = (payload: string): string => {
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    // A FATAL decoder throws if any code point was cut mid-sequence into invalid UTF-8.
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  };
+
+  it("never splits a multi-byte character straddling the 48-byte cut (#1585)", () => {
+    // 47 ASCII bytes leave only 1 byte of headroom; a 4-byte 🌏 straddles the 48-byte cut and must be
+    // dropped WHOLE, not sliced into an invalid lead byte. (The old byte-slice(0,48) produced garbage.)
+    const brief = "x".repeat(47) + "🌏 the world awaits";
+    const payload = telegramStartPayload(brief);
+
+    expect(payload.length).toBeLessThanOrEqual(64);
+    const decoded = decodePayload(payload); // throws here if a code point was split
+    expect(decoded).toBe("x".repeat(47));
+    expect(decoded).not.toContain("�");
+  });
+
+  it("preserves emoji/CJK that fit within the limit (#1585)", () => {
+    const brief = "🚀🌏 东京 launch blitz";
+    const decoded = decodePayload(telegramStartPayload(brief));
+
+    expect(brief.startsWith(decoded)).toBe(true);
+    expect(decoded).toContain("🚀");
+    expect(decoded).toContain("🌏");
+    expect(decoded).toContain("东京");
+    expect(decoded).not.toContain("�");
+  });
+
   it("falls back to the bare bot URL for an empty or whitespace-only value", () => {
     expect(telegramDeepLink("")).toBe(TELEGRAM_BOT_URL);
     expect(telegramDeepLink("   ")).toBe(TELEGRAM_BOT_URL);
