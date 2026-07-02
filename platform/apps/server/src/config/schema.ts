@@ -487,6 +487,15 @@ export const marketingSchema = z.object({
    * untrusted and sanitized + DATA-framed (#200 FM#6) — it can never become instructions or widen scope.
    */
   readSiteContent: z.boolean().optional(),
+  /**
+   * Cross-industry award-transfer research lane (#1547): before drafting, retrieve award-winning mechanisms
+   * from DISTANT industries and surface them to the creative/Quill step as "creative territories" (mechanism
+   * → why it won → how it maps to this client → execution sketch per channel), each anchored in a named
+   * award case. Default OFF and gated owner-workspace-first (see `award-transfer/service.ts:
+   * shouldRunAwardTransfer`): an unconfigured deployment produces no territory briefs and changes no task.
+   * The briefs ride the #320 preamble as reference DATA (#200 FM#6) — never instructions, never a new tool.
+   */
+  awardTransfer: z.boolean().optional(),
 });
 
 /**

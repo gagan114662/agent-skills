@@ -151,12 +151,17 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
   // #363: connect a real read-only data source (a same-origin crawl of the owner's public site) feeding the
   // #320 preamble. Hard default OFF; gated owner-first AND on injectWorkspaceContext (see shouldReadSiteContent).
   const mktReadSite = env.RELOAD_MARKETING_READ_SITE_CONTENT;
+  // #1547: cross-industry award-transfer research lane feeding the creative/Quill drafting step. Hard
+  // default OFF; gated owner-workspace-first against RELOAD_MARKETING_OWNER_WORKSPACE_ID (see
+  // award-transfer/service.ts:shouldRunAwardTransfer).
+  const mktAwardTransfer = env.RELOAD_MARKETING_AWARD_TRANSFER;
   if (
     mktEnabled !== undefined ||
     mktWelcome !== undefined ||
     mktOwner ||
     mktInjectContext !== undefined ||
-    mktReadSite !== undefined
+    mktReadSite !== undefined ||
+    mktAwardTransfer !== undefined
   ) {
     const marketing: Record<string, unknown> = {};
     if (mktEnabled !== undefined) marketing.enabled = mktEnabled === "true" || mktEnabled === "1";
@@ -167,6 +172,9 @@ function envLayer(env: NodeJS.ProcessEnv): Settings {
     }
     if (mktReadSite !== undefined) {
       marketing.readSiteContent = mktReadSite === "true" || mktReadSite === "1";
+    }
+    if (mktAwardTransfer !== undefined) {
+      marketing.awardTransfer = mktAwardTransfer === "true" || mktAwardTransfer === "1";
     }
     raw.marketing = marketing;
   }

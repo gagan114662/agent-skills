@@ -90,6 +90,13 @@ export interface WorkspaceContextFacts {
    * pure module never queries and stays unaware of the store. Absent ⇒ no prior decisions to reuse.
    */
   priorDecisionsBlock?: string;
+  /**
+   * A pre-composed, already-sanitized + DATA-framed block of cross-industry creative territories (#1547):
+   * award-winning mechanisms from DISTANT industries mapped onto this client, each anchored in a named
+   * award case. The IO seam builds it via `award-transfer/service.ts:territoryBriefsBlock` and passes the
+   * string in — this pure module never selects and stays unaware of the archive. Absent ⇒ no territories.
+   */
+  territoryBriefsBlock?: string;
 }
 
 export interface ResolveWorkspaceFactsInput {
@@ -232,6 +239,9 @@ export function composeWorkspaceContextPreamble(facts: WorkspaceContextFacts): s
   // #513: the workspace's prior decisions (already sanitized + DATA-framed by the decisions seam) so a
   // briefed agent reuses what a teammate decided instead of re-deriving it — still strictly DATA.
   if (facts.priorDecisionsBlock) sections.push(facts.priorDecisionsBlock);
+  // #1547: cross-industry creative territories (already sanitized + DATA-framed by the award-transfer seam)
+  // so the creative/Quill step drafts off distant award mechanisms, not same-category clichés — still DATA.
+  if (facts.territoryBriefsBlock) sections.push(facts.territoryBriefsBlock);
 
   if (sections.length === 0) return null;
   return sections.join("\n\n");
