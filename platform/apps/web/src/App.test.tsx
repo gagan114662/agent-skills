@@ -95,6 +95,28 @@ describe("App root routing", () => {
     expect(screen.getByRole("textbox", { name: /what are we marketing/i })).toBeInTheDocument();
   });
 
+  it("keeps the signed-in /everyday room on the warm homepage background, not reload-dark (#1532)", async () => {
+    navigate("/everyday");
+    forceDarkDocument();
+    const { deps } = makeFakeDeps();
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    await screen.findByRole("heading", { name: "iMessage room" });
+    await waitFor(() => {
+      expect(document.body).toHaveAttribute("data-public-surface", "light");
+      expect(getComputedStyle(document.body).backgroundColor).toBe(PUBLIC_BODY_RGB);
+    });
+    expect(getComputedStyle(document.body).backgroundColor).not.toBe(DARK_BODY_RGB);
+    const shell = document.querySelector<HTMLElement>(".everyday-shell");
+    expect(shell).toHaveClass("everyday-shell--public");
+  });
+
   it("opens /signup as the real signup form for logged-out visitors (#1457)", async () => {
     navigate("/signup");
     const { deps } = makeFakeDeps({ me: unauthorized });
