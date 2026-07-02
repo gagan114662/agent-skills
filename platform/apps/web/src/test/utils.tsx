@@ -312,9 +312,9 @@ export function makeFakeDeps(over: FakeBackendOverrides = {}): {
 export function renderWithStore(
   ui: ReactNode,
   over: FakeBackendOverrides = {},
-): RenderResult & { store: Store; rt: ReturnType<typeof fakeRealtime> } {
+): RenderResult & { store: Store; rt: ReturnType<typeof fakeRealtime>; deps: StoreDeps } {
   const { deps, rt } = makeFakeDeps(over);
   const store = createStore(deps);
   const result = render(<StoreProvider store={store}>{ui}</StoreProvider>);
-  return { ...result, store, rt };
+  return { ...result, store, rt, deps };
 }

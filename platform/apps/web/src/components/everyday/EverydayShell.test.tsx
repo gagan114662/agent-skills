@@ -290,14 +290,15 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText(/operator lane ready/i)).toBeInTheDocument();
     expect(within(dashboard).queryByText(/needs CMO metrics feed/i)).not.toBeInTheDocument();
     expect(within(dashboard).getAllByText("live").length).toBeGreaterThan(0);
-    expect(within(dashboard).getByText("launch readiness")).toBeInTheDocument();
-    expect(within(dashboard).getByText("auth")).toBeInTheDocument();
-    expect(within(dashboard).getByText("connectors")).toBeInTheDocument();
-    expect(within(dashboard).getByText("first run")).toBeInTheDocument();
-    expect(within(dashboard).getByText("outbound")).toBeInTheDocument();
-    expect(within(dashboard).getByText("billing")).toBeInTheDocument();
-    expect(within(dashboard).getByText("observability")).toBeInTheDocument();
-    expect(within(dashboard).getByText("legal/trust")).toBeInTheDocument();
+    // #1533: the setup checklist reads in plain customer words, not engineering labels.
+    expect(within(dashboard).getByText(EVERYDAY.dashboard.readiness)).toBeInTheDocument();
+    expect(within(dashboard).getByText("Sign-in")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Connected channels")).toBeInTheDocument();
+    expect(within(dashboard).getByText("First result")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Sending")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Plan & billing")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Activity tracking")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Privacy & trust")).toBeInTheDocument();
   });
 
   it("can render the dashboard as a focused one-icon summary without the full workspace below it", () => {
@@ -314,7 +315,8 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
   });
 
   it("labels public dogfood dashboard metrics by proof class instead of implying sample traction is live", () => {
-    render(<EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />);
+    // #1533: this is the internal dogfooding readout, so it renders with the build-receipt proof lines shown.
+    render(<EverydayShell data={ipopDogfoodEveryday()} dashboardFirst internal />);
     const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
     const metrics = within(dashboard).getByRole("list", { name: EVERYDAY.dashboard.heading + " metrics" });
 
@@ -330,6 +332,28 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(within(dashboard).getByText("changed homepage direction, but did not create customer flow")).toBeInTheDocument();
     expect(within(dashboard).getByText("blocked until one provider has a sent-message receipt")).toBeInTheDocument();
     expect(within(dashboard).getByText("do not upsell until the first lane creates value")).toBeInTheDocument();
+    expect(within(dashboard).getAllByText("zero signup/payment/customer approval receipts").length).toBeGreaterThan(0);
+    expect(within(dashboard).getByText("Google sign-in and signed-in team runtime remain the gate")).toBeInTheDocument();
+  });
+
+  it("#1533: hides internal build-receipt jargon from the customer view but keeps the honesty chip + plain help", () => {
+    // Default render = customer view (internal off). The build receipts must NOT leak onto a customer surface.
+    render(<EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />);
+    const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
+    const metrics = within(dashboard).getByRole("list", { name: EVERYDAY.dashboard.heading + " metrics" });
+
+    // The internal build-receipt lines behind each metric (the "proof" chatter) are hidden from a customer…
+    expect(within(dashboard).queryByText("zero signup/payment/customer approval receipts")).not.toBeInTheDocument();
+    // …but the live/sample/external honesty chip and the plain setup labels stay, so nothing misleads a customer.
+    expect(within(metrics).getAllByText("external proof").length).toBeGreaterThan(0);
+    expect(within(dashboard).getByText("Sign-in")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Connected channels")).toBeInTheDocument();
+  });
+
+  it("#1533: internal flag reveals the build-receipt proof lines for a dogfooding session", () => {
+    render(<EverydayShell data={ipopDogfoodEveryday()} dashboardFirst internal />);
+    const dashboard = screen.getByRole("region", { name: EVERYDAY.dashboard.heading });
+
     expect(within(dashboard).getAllByText("zero signup/payment/customer approval receipts").length).toBeGreaterThan(0);
     expect(within(dashboard).getByText("Google sign-in and signed-in team runtime remain the gate")).toBeInTheDocument();
   });

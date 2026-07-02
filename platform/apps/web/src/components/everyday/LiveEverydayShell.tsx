@@ -242,7 +242,7 @@ function withFirstRunReceipt(
         {
           label: "channels to connect",
           value: "1",
-          detail: "external connector proof required",
+          detail: "connect one channel so the team can actually reach people",
           tone: "bad",
           proof: "no real sent-message receipt",
         },
@@ -307,17 +307,17 @@ function withFirstRunReceipt(
         },
         {
           agent: hasContentDraft ? "Quill" : "Scout",
-          work: hasContentDraft ? firstRun.artifactTitle : "site-read research receipt",
+          work: hasContentDraft ? firstRun.artifactTitle : "read your website",
           impact: hasContentDraft
-            ? "asset is ready to approve, but has not moved revenue yet"
-            : "research is captured, but no Quill or Echo content draft exists yet",
+            ? "the draft is ready for you to approve, but hasn't won a customer yet"
+            : "we've read your site; the team hasn't written a draft from it yet",
           status: hasContentDraft ? "queued" : "learning",
           proof: hasContentDraft ? firstRun.artifactSummary : firstRun.receipt,
         },
         {
           agent: "Echo",
-          work: "external send path",
-          impact: "blocked until one connector produces a real sent-message receipt",
+          work: "reaching people outside ipop",
+          impact: "waiting on one connected channel before anything can be sent",
           status: "blocked",
           proof: "no external transparency receipt created",
         },
@@ -938,11 +938,16 @@ export function LiveEverydayShell({
 
   useEffect(() => {
     if (state.phase !== "ready") return;
-    void store.loadApprovals("pending");
+    // #1531: bootstrap already loads the pending approval queue (loadWorkspace → refreshPending) and realtime
+    // keeps it live, so the everyday surface must NOT re-fire `/approvals?status=pending` on mount — that was a
+    // duplicate boot request. Only fetch here if another surface left the queue on a non-pending filter.
+    if (state.approvals.status !== "pending") void store.loadApprovals("pending");
     void refreshConnections().catch(() => setConnections(null));
     void refreshIMessageStatus().catch(() => setIMessageStatus(null));
     void refreshFirstRun().catch(() => setFirstRun(null));
     void refreshCodexStatus().catch(() => setCodexStatus(null));
+    // NOTE: state.approvals.status is read as a boot-time guard, not subscribed to — this effect stays keyed on
+    // workspace/phase (realtime + the console view own live approval-filter changes), matching the sibling calls.
   }, [state.phase, state.identity?.workspaceId, store]);
 
   // Wire every connector "connect" click to a real setup/OAuth flow (#1551). This never silently no-ops:
