@@ -127,6 +127,40 @@ const draftSetEvent: TeamEvent = {
   },
 };
 
+const strongScores = {
+  specificityToBusiness: 5,
+  hookStrength: 4,
+  clarity: 5,
+  evidenceUse: 4,
+  ctaQuality: 4,
+  voiceConsistency: 5,
+};
+
+const lensReviewEvent: TeamEvent = {
+  teamRunId: "run_1",
+  subtaskId: "lens",
+  agentMemberId: "mem_lens",
+  kind: "milestone",
+  summary: "lens review ready: acme.test",
+  branch: "b-lens",
+  createdAt: "2026-06-08T00:02:00.000Z",
+  artifact: {
+    kind: "lens_review",
+    schemaVersion: 1,
+    threshold: 4,
+    summary: "The email is proof-led and ready for owner review.",
+    reviews: [
+      {
+        format: "email",
+        title: "Launch email",
+        scores: strongScores,
+        averageScore: 4.5,
+        revisionNote: "Tighten the CTA around the review moment.",
+      },
+    ],
+  },
+};
+
 describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure isolation)", () => {
   it("never exceeds the max-concurrency cap", async () => {
     const launcher = new FakeLauncher();
@@ -509,6 +543,194 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(launcher.launched[0]?.task).toContain("Launch email");
     expect(launcher.launched[0]?.task).toContain("Audit trails without chaos");
     expect(launcher.launched[0]?.task).toContain("review drafts");
+  });
+
+  it("adds content-quality rubric instructions to Lens producer tasks (#1542)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: draftSetEvent });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "lens",
+          agentMemberId: "mem_lens",
+          task: "score drafts",
+          branch: "b-lens",
+          requiresArtifacts: ["scout_research", "draft_set"],
+          producesArtifacts: ["lens_review"],
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.task).toContain("lens_review");
+    expect(launcher.launched[0]?.task).toContain("specificityToBusiness");
+    expect(launcher.launched[0]?.task).toContain('"threshold": 4');
+    expect(launcher.launched[0]?.task).toContain("revisedDraft");
+    expect(launcher.launched[0]?.task).toContain("score drafts");
+  });
+
+  it("does not mark Lens done until a valid lens_review is posted (#1542)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel, events } = makeChannel();
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: draftSetEvent });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "lens",
+          agentMemberId: "mem_lens",
+          task: "score drafts",
+          branch: "b-lens",
+          requiresArtifacts: ["scout_research", "draft_set"],
+          producesArtifacts: ["lens_review"],
+        },
+      ],
+    });
+
+    expect(launcher.launched).toHaveLength(1);
+    expect(result.results[0]).toMatchObject({
+      subtaskId: "lens",
+      ok: false,
+      error: "blocked: missing produced artifact: Lens rubric review",
+    });
+    expect(events().some((event) => event.kind === "done" && event.subtaskId === "lens")).toBe(false);
+    expect(events().find((event) => event.kind === "blocked")?.summary).toBe(
+      "blocked: missing produced artifact: Lens rubric review",
+    );
+  });
+
+  it("makes invalid lens_review validator failures visible in the timeline (#1542)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel, postBody } = makeChannel();
+    postBody(encodeTeamEvent({
+      ...lensReviewEvent,
+      artifact: {
+        kind: "lens_review",
+        schemaVersion: 1,
+        threshold: 4,
+        summary: "The email needs revision before owner review.",
+        reviews: [
+          {
+            format: "email",
+            title: "Launch email",
+            scores: {
+              specificityToBusiness: 3,
+              hookStrength: 3,
+              clarity: 3,
+              evidenceUse: 3,
+              ctaQuality: 3,
+              voiceConsistency: 3,
+            },
+            averageScore: 3,
+            revisionNote: "Replace generic language with observed site proof.",
+          },
+        ],
+      },
+    }));
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const seen = await coordinator.readEvents("ch_1");
+
+    expect(seen).toContainEqual(
+      expect.objectContaining({
+        kind: "blocked",
+        summary: "blocked: invalid lens_review artifact: email.revisedDraft: required when averageScore is below threshold",
+      }),
+    );
+  });
+
+  it("blocks distribution before launch when Lens scores are missing (#1542)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel, events } = makeChannel();
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: draftSetEvent });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "echo",
+          agentMemberId: "mem_echo",
+          task: "plan distribution",
+          branch: "b-echo",
+          requiresArtifacts: ["scout_research", "draft_set", "lens_review"],
+        },
+      ],
+    });
+
+    expect(launcher.launched).toHaveLength(0);
+    expect(result.results[0]).toMatchObject({
+      subtaskId: "echo",
+      ok: false,
+      error: "blocked: missing required artifact: Lens rubric review",
+    });
+    expect(events().find((event) => event.kind === "blocked")?.summary).toBe(
+      "blocked: missing required artifact: Lens rubric review",
+    );
+  });
+
+  it("injects Lens scores into distribution tasks (#1542)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: draftSetEvent });
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: lensReviewEvent });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "echo",
+          agentMemberId: "mem_echo",
+          task: "plan distribution",
+          branch: "b-echo",
+          requiresArtifacts: ["scout_research", "draft_set", "lens_review"],
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.task).toContain("lens_review");
+    expect(launcher.launched[0]?.task).toContain("averageScore");
+    expect(launcher.launched[0]?.task).toContain("plan distribution");
   });
 
   it("isolates a failing subtask — its peers still complete", async () => {

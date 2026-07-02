@@ -146,6 +146,45 @@ const fakeLauncher = {
         }),
       });
     }
+    if (input.teamRunId && taskText.includes("produce the required lens_review artifact")) {
+      const subtaskId = teamEventField(input.task, "subtaskId") ?? "lens";
+      await channelPoster.post({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        agentMemberId: input.agentMemberId,
+        body: encodeTeamEvent({
+          teamRunId: input.teamRunId,
+          subtaskId,
+          agentMemberId: input.agentMemberId,
+          kind: "milestone",
+          summary: "lens review ready: ipop.ai",
+          branch: teamEventField(input.task, "branch"),
+          artifact: {
+            kind: "lens_review",
+            schemaVersion: 1,
+            threshold: 4,
+            summary: "Drafts are specific, proof-led, and ready for owner review.",
+            reviews: [
+              {
+                format: "email",
+                title: "Welcome email",
+                scores: {
+                  specificityToBusiness: 5,
+                  hookStrength: 4,
+                  clarity: 5,
+                  evidenceUse: 4,
+                  ctaQuality: 4,
+                  voiceConsistency: 5,
+                },
+                averageScore: 4.5,
+                revisionNote: "Tighten the CTA around the owner review moment.",
+              },
+            ],
+          },
+          createdAt: new Date(0).toISOString(),
+        }),
+      });
+    }
     return { id: "telegram-session-" + teamLaunches.length };
   }),
   join: vi.fn(async () => {}),
@@ -799,19 +838,19 @@ describe("Telegram room bridge (#1267)", () => {
     expect(first.statusCode).toBe(202);
     expect(first.json()).toMatchObject({
       status: "launched",
-      subtaskCount: 4,
+      subtaskCount: 5,
       providerReply: { status: "sent", chatId: "334455" },
     });
     expect(sendMessage).toHaveBeenCalledWith({
       botToken: "bot-token",
       apiBaseUrl: "https://telegram.test",
       chatId: "334455",
-      text: expect.stringContaining("Scout, Quill, Echo, and Bid are in the room"),
+      text: expect.stringContaining("Scout, Quill, Lens, Echo, and Bid are in the room"),
     });
-    await waitForLaunches(4);
+    await waitForLaunches(5);
     await expectNoSendContaining("started:");
     expect(new Set(teamLaunches.map((launch) => launch.teamRunId))).toEqual(new Set([first.json().teamRunId]));
-    expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex"]);
+    expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex", "codex"]);
     expect((await listChannelMessages(first.json().channelId)).map((m) => m.body)).toContain("market ipop.ai");
 
     const duplicate = await app.inject({
@@ -826,7 +865,7 @@ describe("Telegram room bridge (#1267)", () => {
       messageId: first.json().messageId,
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(teamLaunches).toHaveLength(4);
+    expect(teamLaunches).toHaveLength(5);
 
     const laterReply = await app.inject({
       method: "POST",

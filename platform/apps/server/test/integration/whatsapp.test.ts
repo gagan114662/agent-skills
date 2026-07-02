@@ -147,6 +147,45 @@ const fakeLauncher = {
         }),
       });
     }
+    if (input.teamRunId && taskText.includes("produce the required lens_review artifact")) {
+      const subtaskId = teamEventField(input.task, "subtaskId") ?? "lens";
+      await channelPoster.post({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        agentMemberId: input.agentMemberId,
+        body: encodeTeamEvent({
+          teamRunId: input.teamRunId,
+          subtaskId,
+          agentMemberId: input.agentMemberId,
+          kind: "milestone",
+          summary: "lens review ready: ipop.ai",
+          branch: teamEventField(input.task, "branch"),
+          artifact: {
+            kind: "lens_review",
+            schemaVersion: 1,
+            threshold: 4,
+            summary: "Drafts are specific, proof-led, and ready for owner review.",
+            reviews: [
+              {
+                format: "email",
+                title: "Welcome email",
+                scores: {
+                  specificityToBusiness: 5,
+                  hookStrength: 4,
+                  clarity: 5,
+                  evidenceUse: 4,
+                  ctaQuality: 4,
+                  voiceConsistency: 5,
+                },
+                averageScore: 4.5,
+                revisionNote: "Tighten the CTA around the owner review moment.",
+              },
+            ],
+          },
+          createdAt: new Date(0).toISOString(),
+        }),
+      });
+    }
     return { id: "whatsapp-session-" + teamLaunches.length };
   }),
   join: vi.fn(async () => {}),
@@ -724,7 +763,7 @@ describe("WhatsApp room bridge (#1267)", () => {
     expect(first.statusCode).toBe(202);
     expect(first.json()).toMatchObject({
       status: "launched",
-      subtaskCount: 4,
+      subtaskCount: 5,
       providerReply: { status: "sent", recipient: "15552223333" },
     });
     expect(sendMessage).toHaveBeenCalledWith({
@@ -732,11 +771,11 @@ describe("WhatsApp room bridge (#1267)", () => {
       apiBaseUrl: "https://graph.test/v20.0",
       phoneNumberId: "phone-id",
       recipient: "15552223333",
-      text: expect.stringContaining("Scout, Quill, Echo, and Bid are in the room"),
+      text: expect.stringContaining("Scout, Quill, Lens, Echo, and Bid are in the room"),
     });
-    await waitForLaunches(4);
+    await waitForLaunches(5);
     await expectNoSendContaining("started:");
-    expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex"]);
+    expect(teamLaunches.map((launch) => launch.harness)).toEqual(["codex", "codex", "codex", "codex", "codex"]);
     expect(new Set(teamLaunches.map((launch) => launch.teamRunId))).toEqual(new Set([first.json().teamRunId]));
     expect((await listChannelMessages(first.json().channelId)).map((m) => m.body)).toContain("market ipop.ai");
   });

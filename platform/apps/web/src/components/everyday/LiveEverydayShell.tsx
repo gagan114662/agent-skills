@@ -555,39 +555,42 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     ],
   },
   {
-    role: "Echo",
-    lane: "distribution",
+    role: "Lens",
+    lane: "taste and proof",
     phase: 3,
-    requiresArtifacts: ["scout_research"],
+    requiresArtifacts: ["scout_research", "draft_set"],
+    producesArtifacts: ["lens_review"],
     immediateRequest: (goal) =>
-      "Plan the first outreach/content distribution moves for " +
+      "Score every Quill draft for " +
       goal +
-      ". Do not send externally; prepare approval-ready drafts and connector blockers.",
+      " before it reaches the owner. Use the injected Scout research and draft_set artifacts; apply the six-part rubric (specificity to business, hook strength, clarity, evidence use, CTA quality, voice consistency), write one concrete revision note per draft, and produce the required lens_review artifact. If any draft scores below 4, revise it once in the artifact before handoff. If a required draft is missing, name the missing artifact and the agent lane that failed instead of reviewing an empty workspace.",
     outputFormat: [
-      "channel sequence",
-      "approval-ready drafts",
-      "connectors or policies blocking real sends",
+      "rubric scores per draft",
+      "one concrete revision note per draft",
+      "valid lens_review artifact",
+      "approval criteria before publishing or sending",
     ],
   },
   {
-    role: "Lens",
-    lane: "taste and proof",
+    role: "Echo",
+    lane: "distribution",
     phase: 4,
-    requiresArtifacts: ["scout_research", "draft_set"],
+    requiresArtifacts: ["scout_research", "draft_set", "lens_review"],
     immediateRequest: (goal) =>
-      "Review Scout, Quill, and Echo's room artifacts for brand taste, originality, proof, and anti-slop quality for " +
+      "Plan the first outreach/content distribution moves for " +
       goal +
-      ". If a required draft is missing, name the missing artifact and the agent lane that failed instead of reviewing an empty workspace.",
+      ". Use the injected Lens scores and revised drafts; do not send externally; prepare approval-ready drafts and connector blockers.",
     outputFormat: [
-      "taste verdict",
-      "specific slop risks to remove",
-      "approval criteria before publishing or sending",
+      "channel sequence",
+      "Lens-scored approval-ready drafts",
+      "connectors or policies blocking real sends",
     ],
   },
   {
     role: "Codex",
     lane: "codex_operator_lane",
     phase: 5,
+    requiresArtifacts: ["lens_review"],
     immediateRequest: (goal) =>
       "Act as the implementation operator for the marketing room. Convert approved product, website, workflow, connector, or observability decisions into implementation tasks, PRs, issues, or verified fixes for " +
       goal +

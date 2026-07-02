@@ -131,7 +131,7 @@ export interface PolicySimulationResult {
 export type TeamEventKind = "started" | "milestone" | "blocked" | "needs_handoff" | "done";
 
 /** Typed artifacts teammates can hand off during a team run. */
-export type TeamArtifactKind = "scout_research" | "draft_set";
+export type TeamArtifactKind = "scout_research" | "draft_set" | "lens_review";
 
 /**
  * Scout's research handoff for downstream writers. This is intentionally compact enough to fit in a
@@ -174,7 +174,36 @@ export interface DraftSetArtifact {
   drafts: MarketingDraft[];
 }
 
-export type TeamArtifact = ScoutResearchArtifact | DraftSetArtifact;
+export type ContentRubricMetric =
+  | "specificityToBusiness"
+  | "hookStrength"
+  | "clarity"
+  | "evidenceUse"
+  | "ctaQuality"
+  | "voiceConsistency";
+
+export type DraftRubricScores = Record<ContentRubricMetric, number>;
+
+export interface LensDraftReview {
+  format: MarketingDraftFormat;
+  title: string;
+  scores: DraftRubricScores;
+  averageScore: number;
+  revisionNote: string;
+  /** Required when the draft falls below the quality threshold. */
+  revisedDraft?: MarketingDraft;
+}
+
+/** Lens' structured quality pass over Quill's channel-native drafts. */
+export interface LensReviewArtifact {
+  kind: "lens_review";
+  schemaVersion: 1;
+  threshold: number;
+  summary: string;
+  reviews: LensDraftReview[];
+}
+
+export type TeamArtifact = ScoutResearchArtifact | DraftSetArtifact | LensReviewArtifact;
 
 export interface DraftValidationIssue {
   format: MarketingDraftFormat;
@@ -184,6 +213,15 @@ export interface DraftValidationIssue {
 }
 
 const SPAM_TRIGGER_RE = /\b(?:free money|guaranteed|risk-free|act now|limited time|winner|cash bonus)\b/i;
+export const CONTENT_QUALITY_THRESHOLD = 4;
+export const CONTENT_RUBRIC_METRICS: readonly ContentRubricMetric[] = [
+  "specificityToBusiness",
+  "hookStrength",
+  "clarity",
+  "evidenceUse",
+  "ctaQuality",
+  "voiceConsistency",
+];
 
 function strings(value: string | string[] | undefined): string[] {
   return Array.isArray(value) ? value : [];
@@ -318,6 +356,62 @@ export function validateDraftSetArtifact(artifact: DraftSetArtifact): DraftValid
   const issues = artifact.drafts.flatMap(validateMarketingDraft);
   if (artifact.drafts.length === 0) {
     issues.push({ format: "email", title: "draft_set", field: "drafts", message: "must include at least one draft" });
+  }
+  return issues;
+}
+
+export function contentRubricAverage(scores: DraftRubricScores): number {
+  const total = CONTENT_RUBRIC_METRICS.reduce((sum, metric) => sum + scores[metric], 0);
+  return Math.round((total / CONTENT_RUBRIC_METRICS.length) * 10) / 10;
+}
+
+function pushRubricIssue(
+  issues: DraftValidationIssue[],
+  review: Pick<LensDraftReview, "format" | "title">,
+  field: string,
+  message: string,
+): void {
+  issues.push({ format: review.format, title: review.title, field, message });
+}
+
+export function validateLensReviewArtifact(artifact: LensReviewArtifact): DraftValidationIssue[] {
+  const issues: DraftValidationIssue[] = [];
+  if (artifact.threshold < 1 || artifact.threshold > 5) {
+    issues.push({ format: "email", title: "lens_review", field: "threshold", message: "must be between 1 and 5" });
+  }
+  if (!artifact.summary.trim()) {
+    issues.push({ format: "email", title: "lens_review", field: "summary", message: "required" });
+  }
+  if (artifact.reviews.length === 0) {
+    issues.push({ format: "email", title: "lens_review", field: "reviews", message: "must include at least one draft review" });
+  }
+  for (const review of artifact.reviews) {
+    if (!review.title.trim()) pushRubricIssue(issues, review, "title", "required");
+    for (const metric of CONTENT_RUBRIC_METRICS) {
+      const score = review.scores[metric];
+      if (!Number.isInteger(score) || score < 1 || score > 5) {
+        pushRubricIssue(issues, review, "scores." + metric, "must be an integer from 1 to 5");
+      }
+    }
+    const expectedAverage = contentRubricAverage(review.scores);
+    if (Math.abs(review.averageScore - expectedAverage) > 0.05) {
+      pushRubricIssue(issues, review, "averageScore", "must equal computed rubric average " + expectedAverage);
+    }
+    if (review.revisionNote.trim().length < 12) {
+      pushRubricIssue(issues, review, "revisionNote", "must be a concrete revision note");
+    }
+    if (review.averageScore < artifact.threshold) {
+      if (!review.revisedDraft) {
+        pushRubricIssue(issues, review, "revisedDraft", "required when averageScore is below threshold");
+      } else {
+        if (review.revisedDraft.format !== review.format) {
+          pushRubricIssue(issues, review, "revisedDraft.format", "must match reviewed draft format");
+        }
+        for (const issue of validateMarketingDraft(review.revisedDraft)) {
+          pushRubricIssue(issues, review, "revisedDraft." + issue.field, issue.message);
+        }
+      }
+    }
   }
   return issues;
 }

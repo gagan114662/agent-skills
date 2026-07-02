@@ -102,6 +102,7 @@ function uniqueArtifactKinds(kinds: readonly TeamArtifactKind[] | undefined): Te
 function artifactLabel(kind: TeamArtifactKind): string {
   if (kind === "scout_research") return "Scout research artifact";
   if (kind === "draft_set") return "Validated channel-native draft set";
+  if (kind === "lens_review") return "Lens rubric review";
   return kind;
 }
 
@@ -158,6 +159,47 @@ function artifactProductionInstructions(
       "  - email: subject <=45, preheader <=90, body/cta/plainTextAlt required, no spam-trigger phrasing.",
       "  - landing_hero: headline <=70, subhead <=160, cta <=30.",
       "  - seo_snippet: title <=60, metaDescription 150-160 chars, intent required.",
+    ].join("\n");
+    if (kind === "lens_review") return [
+      "- lens_review: post one valid team milestone event when the rubric review is ready.",
+      "  Score every draft in the injected draft_set before any owner-visible handoff treats it as ready.",
+      "  The line must start with ::team-event:: followed by JSON with this exact envelope:",
+      "  {",
+      '    "teamRunId": "' + input.teamRunId + '",',
+      '    "subtaskId": "' + subtask.subtaskId + '",',
+      '    "agentMemberId": "' + subtask.agentMemberId + '",',
+      '    "kind": "milestone",',
+      '    "summary": "lens review ready: <domain or target>",',
+      '    "branch": "' + subtask.branch + '",',
+      '    "createdAt": "<current ISO timestamp>",',
+      '    "artifact": {',
+      '      "kind": "lens_review",',
+      '      "schemaVersion": 1,',
+      '      "threshold": 4,',
+      '      "summary": "<overall quality verdict>",',
+      '      "reviews": [',
+      "        {",
+      '          "format": "<same draft format>",',
+      '          "title": "<same draft title>",',
+      '          "scores": {',
+      '            "specificityToBusiness": 1,',
+      '            "hookStrength": 1,',
+      '            "clarity": 1,',
+      '            "evidenceUse": 1,',
+      '            "ctaQuality": 1,',
+      '            "voiceConsistency": 1',
+      "          },",
+      '          "averageScore": 1,',
+      '          "revisionNote": "<one concrete revision instruction>",',
+      '          "revisedDraft": { "...": "required only when averageScore is below threshold" }',
+      "        }",
+      "      ]",
+      "    }",
+      "  }",
+      "  Rubric scores are integers from 1 to 5; averageScore must match the computed average.",
+      "  Score dimensions: specificityToBusiness, hookStrength, clarity, evidenceUse, ctaQuality, voiceConsistency.",
+      "  If a draft averageScore is below threshold, include one revisedDraft that still passes its channel validator.",
+      "  Do not send, post, publish, or spend; the existing human approval gates remain in charge.",
     ].join("\n");
     return "- " + kind;
   });
