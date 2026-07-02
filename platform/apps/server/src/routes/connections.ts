@@ -46,6 +46,8 @@ import {
 import { buildExternalProviderReadiness } from "../messaging/readiness.js";
 import { channelForEspProvider, type OutboundChannel } from "../outbound-channel/channel.js";
 import { connectChannel, revokeChannel } from "../outbound-channel/service.js";
+import { toOutboundReceiptView } from "../outbound-channel/receipt-view.js";
+import { listSendReceipts } from "../db/repositories/outbound-channels.js";
 import { createTelegramConnectCode } from "../telegram/connect-code.js";
 
 /**
@@ -544,7 +546,16 @@ export async function connectionsRoutes(app: FastifyInstance): Promise<void> {
       proofs: await connectionProofs(wid),
       isOwner,
     });
-    return { connections, canManageInternal: isOwner };
+    // The read-back of every approved outbound send that touched reality (#395 §3 / #200 §3). Workspace-scoped
+    // by the identity's workspaceId only (never a request param — the #3 IDOR guard), and mapped to the safe
+    // display subset. Best-effort: a receipt read must never break the connections surface itself.
+    let outboundReceipts: ReturnType<typeof toOutboundReceiptView>[] = [];
+    try {
+      outboundReceipts = (await listSendReceipts(wid)).map(toOutboundReceiptView);
+    } catch (err) {
+      req.log.error({ err }, "connections: reading outbound send receipts failed (surface still returned)");
+    }
+    return { connections, canManageInternal: isOwner, outboundReceipts };
   });
 
   // INTERNAL paste connect (admin only): seal the GitHub token + repo into the encrypted vault.
