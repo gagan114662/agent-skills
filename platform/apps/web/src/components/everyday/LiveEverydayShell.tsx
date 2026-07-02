@@ -76,9 +76,10 @@ function approvalCard(request: ApprovalRequestDto, state: AppState): ApprovalCar
 }
 
 function parseTeamEventMessage(message: Message): TeamEvent | null {
-  if (!message.body.startsWith(TEAM_EVENT_MARKER)) return null;
+  const body = message.body;
+  if (!body?.startsWith(TEAM_EVENT_MARKER)) return null;
   try {
-    const parsed = JSON.parse(message.body.slice(TEAM_EVENT_MARKER.length).trim()) as TeamEvent;
+    const parsed = JSON.parse(body.slice(TEAM_EVENT_MARKER.length).trim()) as TeamEvent;
     return parsed && typeof parsed.summary === "string" ? parsed : null;
   } catch {
     return null;
@@ -102,7 +103,7 @@ function teamEventThreadEntry(
 ): ThreadEntry {
   const agent = authorLabel(state.directory, event.agentMemberId);
   if (event.artifact?.kind === "draft_set") {
-    const firstDraft = event.artifact.drafts[0];
+    const firstDraft = event.artifact.drafts?.[0];
     if (firstDraft) {
       return {
         id: message.id,
@@ -160,6 +161,7 @@ function stageLabel(stage: FirstRunReceiptDto["stage"]): string {
 
 function firstRunHasContentDraft(firstRun: FirstRunReceiptDto): boolean {
   if (firstRun.stage !== "agent_result") return false;
+  if (!firstRun.artifactTitle) return false;
   return !/\b(?:site[- ]?read|receipt|research|source read)\b/i.test(firstRun.artifactTitle);
 }
 

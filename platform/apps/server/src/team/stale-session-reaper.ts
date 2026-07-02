@@ -31,8 +31,12 @@ export function createTeamRunStaleSessionReaper({
       const reaped: StaleSessionReapResult["reaped"] = [];
       for (const session of stale) {
         const staleForMs = Math.max(0, nowMs - session.progressAt.getTime());
-        const canceled = await sessionManager.cancel(session.id);
-        reaped.push({ sessionId: session.id, staleForMs, canceled });
+        try {
+          const canceled = await sessionManager.cancel(session.id);
+          reaped.push({ sessionId: session.id, staleForMs, canceled });
+        } catch {
+          reaped.push({ sessionId: session.id, staleForMs, canceled: false });
+        }
       }
       return { scanned: scoped.length, reaped };
     },

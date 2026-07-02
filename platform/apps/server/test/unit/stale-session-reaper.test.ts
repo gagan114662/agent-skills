@@ -76,4 +76,43 @@ describe("createTeamRunStaleSessionReaper", () => {
       reaped: [{ sessionId: "stale-scout", staleForMs: 90_000, canceled: true }],
     });
   });
+
+  it("continues reaping when one stale session cannot be canceled", async () => {
+    const now = new Date("2026-07-02T12:00:00.000Z");
+    mocks.listWorkspaceLiveSessions.mockResolvedValue([
+      liveSession({
+        id: "stale-scout",
+        channelId: "room-1",
+        progressAt: new Date("2026-07-02T11:58:00.000Z"),
+      }),
+      liveSession({
+        id: "stale-quill",
+        channelId: "room-1",
+        progressAt: new Date("2026-07-02T11:57:00.000Z"),
+      }),
+    ]);
+    const sessionManager = {
+      cancel: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("already gone"))
+        .mockResolvedValueOnce(true),
+    };
+    const reaper = createTeamRunStaleSessionReaper({
+      sessionManager,
+      now: () => now,
+    });
+
+    const result = await reaper.reap({ workspaceId: "ws_1", channelId: "room-1" });
+
+    expect(sessionManager.cancel).toHaveBeenCalledTimes(2);
+    expect(sessionManager.cancel).toHaveBeenNthCalledWith(1, "stale-scout");
+    expect(sessionManager.cancel).toHaveBeenNthCalledWith(2, "stale-quill");
+    expect(result).toEqual({
+      scanned: 2,
+      reaped: [
+        { sessionId: "stale-scout", staleForMs: 120_000, canceled: false },
+        { sessionId: "stale-quill", staleForMs: 180_000, canceled: true },
+      ],
+    });
+  });
 });
