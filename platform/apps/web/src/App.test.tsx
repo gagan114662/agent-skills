@@ -5,7 +5,7 @@ import { createStore } from "./store/store.js";
 import { StoreProvider } from "./store/StoreContext.js";
 import { fakeRealtime, makeFakeDeps } from "./test/utils.js";
 import { APP_ROUTES, navigate } from "./routing.js";
-import { TELEGRAM_BOT_URL } from "./components/onboarding/messaging-entry.js";
+import { TELEGRAM_BOT_URL, telegramDeepLink } from "./components/onboarding/messaging-entry.js";
 import { PRICING } from "./brand.js";
 import { IPOP_PUBLIC_THEME } from "./design/public-theme.js";
 
@@ -367,7 +367,8 @@ describe("App root routing", () => {
       });
       fireEvent.click(screen.getByRole("button", { name: /open telegram/i }));
 
-      expect(assign).toHaveBeenCalledWith(TELEGRAM_BOT_URL);
+      // #1549: the typed brief rides into Telegram as a ?start= payload rather than being discarded.
+      expect(assign).toHaveBeenCalledWith(telegramDeepLink("acme.com"));
       expect(
         screen.queryByRole("article", { name: /instant personalized deliverable/i }),
       ).not.toBeInTheDocument();
