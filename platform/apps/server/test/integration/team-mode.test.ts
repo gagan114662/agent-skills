@@ -171,6 +171,34 @@ async function pollTeamEvents(
 }
 
 describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
+  it("creates a channel-scoped team run at the exact web client route", async () => {
+    const { app } = await startApp(1);
+    const w = await seed(app, 1);
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/team-runs`,
+      cookies: { rid: w.cookie },
+      payload: {
+        subtasks: [
+          {
+            agentMemberId: w.agentMemberIds[0],
+            task: "draft one useful launch asset",
+            branch: "ipop-route-smoke",
+          },
+        ],
+      },
+    });
+
+    expect(launch.statusCode).toBe(201);
+    const body = launch.json();
+    expect(typeof body.teamRunId).toBe("string");
+    expect(body).toMatchObject({
+      subtaskCount: 1,
+      subtasks: [{ agentMemberId: w.agentMemberIds[0], branch: "ipop-route-smoke" }],
+    });
+  });
+
   it("runs 3 agents in parallel on one feature and coordinates over the team channel", async () => {
     const { app } = await startApp(3);
     const w = await seed(app, 3);
@@ -187,7 +215,7 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
       cookies: { rid: w.cookie },
       payload: { subtasks },
     });
-    expect(launch.statusCode).toBe(202);
+    expect(launch.statusCode).toBe(201);
     const body = launch.json();
     expect(body.subtaskCount).toBe(3);
     expect(typeof body.teamRunId).toBe("string");
@@ -389,7 +417,7 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
       },
     });
 
-    expect(launch.statusCode).toBe(202);
+    expect(launch.statusCode).toBe(201);
     expect(launch.json()).toMatchObject({
       subtaskCount: 1,
       subtasks: [{ agentMemberId: w.agentMemberIds[0], branch: "ipop-scout", harness: "codex" }],

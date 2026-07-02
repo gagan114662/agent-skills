@@ -110,10 +110,10 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
   });
 
   // Launch a team run: write capability; every subtask targets an agent member in-workspace.
-  app.post("/channels/:cid/team-runs", async (req, reply) => {
+  app.post("/channels/:channelId/team-runs", async (req, reply) => {
     const id = await requireIdentity(req, reply);
     if (!id) return;
-    const { cid } = req.params as { cid: string };
+    const { channelId: cid } = req.params as { channelId: string };
     const ch = await requireChannelCapability(id, cid, "write", reply);
     if (!ch) return;
     if (ch.isArchived) return reply.code(409).send({ error: "channel is archived" });
@@ -219,8 +219,8 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         app.log.error({ err, teamRunId }, "team run crashed");
       });
 
-    // 202: accepted and running server-side; the client can disconnect now.
-    return reply.code(202).send({
+    // 201: a durable team run was created; execution continues server-side.
+    return reply.code(201).send({
       teamRunId,
       subtaskCount: subtasks.length,
       subtasks: subtasks.map((s) => ({
