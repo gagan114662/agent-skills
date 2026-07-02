@@ -34,8 +34,8 @@ describe("runtime provider selection (#1568 — Claude default, Codex pluggable)
 });
 
 describe("claude runtime status (#1568 — subscription primary, api-key fallback)", () => {
-  const deps = (mode: "subscription" | "api_key" | "none") => ({
-    resolveAuthMode: async () => mode,
+  const deps = (mode: "subscription" | "api_key" | "none", reason?: string) => ({
+    resolveAuthMode: async () => ({ mode, ...(reason ? { reason } : {}) }),
   });
 
   it("reports authMode subscription when a Claude subscription token authenticates the run", async () => {
@@ -73,6 +73,15 @@ describe("claude runtime status (#1568 — subscription primary, api-key fallbac
     expect(status.reason).toContain("CLAUDE_CODE_OAUTH_TOKEN");
     expect(status.reason).toContain("Connect Claude");
   });
+
+  it("fails LOUD with the specific plain-language cause when the resolver supplies one", async () => {
+    const status = await createClaudeRuntimeStatusProvider(
+      deps("none", "Your workspace's connected Claude token is present but unusable — reconnect it."),
+    ).status("w1", "m1");
+    expect(status.connected).toBe(false);
+    expect(status.authMode).toBeNull();
+    expect(status.reason).toContain("present but unusable");
+  });
 });
 
 describe("provider-dispatched runtime status (#1568)", () => {
@@ -98,7 +107,7 @@ describe("provider-dispatched runtime status (#1568)", () => {
 
   it("dispatches on the resolved provider", async () => {
     const claude = createClaudeRuntimeStatusProvider({
-      resolveAuthMode: async () => "api_key",
+      resolveAuthMode: async () => ({ mode: "api_key" }),
     });
     const codex = { status: async () => codexStatus };
 

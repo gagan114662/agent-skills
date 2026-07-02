@@ -778,7 +778,13 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const runtimeProvider = env.agent.provider;
   const statusAuthResolver = createAgentAuthResolver();
   const claudeRuntimeStatus = createClaudeRuntimeStatusProvider({
-    resolveAuthMode: async (workspaceId) => (await statusAuthResolver.resolve(workspaceId)).mode,
+    resolveAuthMode: async (workspaceId) => {
+      const auth = await statusAuthResolver.resolve(workspaceId);
+      // Thread the loud plain-language cause (e.g. malformed workspace token) into the status.
+      return auth.mode === "none"
+        ? { mode: auth.mode, ...(auth.reason ? { reason: auth.reason } : {}) }
+        : { mode: auth.mode };
+    },
   });
   const runtimeStatus =
     opts.runtimeStatus ??

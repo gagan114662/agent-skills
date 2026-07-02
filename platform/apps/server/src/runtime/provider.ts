@@ -85,14 +85,20 @@ export interface RuntimeStatusProvider {
   status(workspaceId: string, memberId: string): Promise<RuntimeStatus>;
 }
 
+export interface ClaudeAuthModeResult {
+  mode: "subscription" | "api_key" | "none";
+  /** Plain-language cause for `none` when known (e.g. a present-but-malformed workspace token). */
+  reason?: string;
+}
+
 export interface ClaudeRuntimeStatusDeps {
   /**
    * The auth mode the runtime would launch this workspace with — the SAME decision the
-   * SessionManager's secrets path makes (`AgentAuthResolver.resolve(...).mode`), so the status and
+   * SessionManager's secrets path makes (`AgentAuthResolver.resolve(...)`), so the status and
    * the launch can never disagree. `subscription` covers both the workspace's own connect and the
    * deployment `CLAUDE_CODE_OAUTH_TOKEN`; `api_key` is the optional env fallback.
    */
-  resolveAuthMode(workspaceId: string): Promise<"subscription" | "api_key" | "none">;
+  resolveAuthMode(workspaceId: string): Promise<ClaudeAuthModeResult>;
 }
 
 /**
@@ -111,7 +117,7 @@ export function createClaudeRuntimeStatusProvider(deps: ClaudeRuntimeStatusDeps)
         workspaceAuthenticated: true,
         fallback: "none" as const,
       };
-      const mode = await deps.resolveAuthMode(workspaceId);
+      const { mode, reason } = await deps.resolveAuthMode(workspaceId);
       if (mode === "subscription") {
         return {
           ...base,
@@ -135,10 +141,13 @@ export function createClaudeRuntimeStatusProvider(deps: ClaudeRuntimeStatusDeps)
       return {
         ...base,
         connected: false,
+        // A specific plain-language cause (e.g. a malformed workspace token) fails LOUD here rather
+        // than hiding behind the generic connect copy.
         reason:
+          reason ??
           "Claude is not connected for this workspace yet. Connect a Claude subscription in " +
-          "Settings → Connect Claude, or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) " +
-          "in the server environment.",
+            "Settings → Connect Claude, or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) " +
+            "in the server environment.",
         runtimeAuth: "missing",
         authMode: null,
         apiKeySatisfies: false,

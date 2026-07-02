@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { decideAgentAuth, harnessRequiresAuth } from "../../src/runtime/agent-auth.js";
+import {
+  decideAgentAuth,
+  harnessRequiresAuth,
+  MALFORMED_WORKSPACE_TOKEN_REASON,
+} from "../../src/runtime/agent-auth.js";
 
 describe("decideAgentAuth (#68/#246/#1568 — subscription first, env API key fallback, per-tenant)", () => {
   it("uses the workspace subscription token when present", () => {
@@ -84,6 +88,22 @@ describe("decideAgentAuth (#68/#246/#1568 — subscription first, env API key fa
     expect(decideAgentAuth({ subscriptionToken: "sk-ant oat" }).mode).toBe("none");
     // A well-formed token (even a short test literal) still authenticates.
     expect(decideAgentAuth({ subscriptionToken: "oauth-tok" }).mode).toBe("subscription");
+  });
+
+  it("a MALFORMED workspace token fails LOUD and never falls back to the deployment's credentials (Gemini HIGH #1590)", () => {
+    // Falling through would silently bill the OWNER's account for a tenant whose own connection is
+    // broken. Instead the decision stops with a plain-language, reconnect-actionable reason.
+    const auth = decideAgentAuth({
+      subscriptionToken: "sk-ant bad\npaste",
+      envSubscriptionToken: "env-setup-token",
+      envApiKey: "sk-ant-env",
+    });
+    expect(auth).toEqual({ mode: "none", secrets: {}, reason: MALFORMED_WORKSPACE_TOKEN_REASON });
+    expect(auth.secrets).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
+    expect(auth.secrets).not.toHaveProperty("ANTHROPIC_API_KEY");
+    // The reason is plain language + actionable, and never carries a credential value.
+    expect(MALFORMED_WORKSPACE_TOKEN_REASON).toContain("Reconnect");
+    expect(MALFORMED_WORKSPACE_TOKEN_REASON).not.toContain("sk-ant");
   });
 });
 

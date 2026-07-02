@@ -17,7 +17,25 @@ import { isWellFormedClaudeKey } from "../auth/claude-key-validation.js";
 export type AgentAuth =
   | { mode: "subscription"; secrets: { CLAUDE_CODE_OAUTH_TOKEN: string } }
   | { mode: "api_key"; secrets: { ANTHROPIC_API_KEY: string } }
-  | { mode: "none"; secrets: Record<string, never> };
+  | {
+      mode: "none";
+      secrets: Record<string, never>;
+      /**
+       * Plain-language, owner/tenant-facing explanation of WHY there is no auth, when the cause is
+       * more specific than "never connected" (e.g. a present-but-malformed workspace token). Safe to
+       * surface in a channel prompt or the runtime status — never contains a credential value.
+       */
+      reason?: string;
+    };
+
+/**
+ * The loud, plain-language error for a workspace whose CONNECTED token is unusable. This case must
+ * never silently fall back to the deployment's credentials (Gemini review on #1590): the tenant's
+ * runs would bill the OWNER's account while the tenant's broken connection went unnoticed.
+ */
+export const MALFORMED_WORKSPACE_TOKEN_REASON =
+  "Your workspace's connected Claude token is present but unusable — it looks like a bad paste " +
+  "(extra spaces or line breaks). Reconnect it in Settings → Connect Claude to run agents again.";
 
 export interface AgentAuthInput {
   /** The workspace's own Claude subscription token (`claude setup-token`), or null if not connected. */
@@ -60,16 +78,22 @@ function present(value: string | null | undefined): string | null {
  */
 export function decideAgentAuth(input: AgentAuthInput): AgentAuth {
   const subscriptionToken = present(input.subscriptionToken);
-  // #659 validate-before-run-start: a stored token that is present but MALFORMED (an embedded
-  // newline/space from a bad paste) is treated as absent, so the @mention auth gate posts the
-  // "reconnect your Claude" prompt up front instead of injecting a doomed credential that crashes the
-  // session mid-run. Format-only + pure (no network) — a well-formed-but-revoked token is still caught
-  // at entry by the live checker and, failing that, by the existing observed-failure → `expired` path.
-  if (subscriptionToken && isWellFormedClaudeKey(subscriptionToken)) {
-    return { mode: "subscription", secrets: { CLAUDE_CODE_OAUTH_TOKEN: subscriptionToken } };
+  if (subscriptionToken) {
+    // #659 validate-before-run-start: a stored token that is present but MALFORMED (an embedded
+    // newline/space from a bad paste) fails LOUD and STOPS here — no fallback to the deployment's
+    // credentials (Gemini HIGH on #1590). Falling through would silently bill the owner's account
+    // for a tenant whose own connection is broken; instead the gate posts the plain-language
+    // reconnect prompt up front. Format-only + pure (no network) — a well-formed-but-revoked token
+    // is still caught at entry by the live checker and, failing that, by the existing
+    // observed-failure → `expired` path.
+    if (isWellFormedClaudeKey(subscriptionToken)) {
+      return { mode: "subscription", secrets: { CLAUDE_CODE_OAUTH_TOKEN: subscriptionToken } };
+    }
+    return { mode: "none", secrets: {}, reason: MALFORMED_WORKSPACE_TOKEN_REASON };
   }
-  // Same malformed-paste defense for the deployment token — a bad Fly secret surfaces as "connect"
-  // up front, never a doomed launch.
+  // Deployment-level credentials apply only when the workspace has NO token at all. A malformed
+  // deployment token (bad Fly paste) cleanly falls back to the deployment's own API key — both are
+  // the OWNER's credentials, so the posture's "never bill someone else's account" rule holds.
   const envSubscriptionToken = present(input.envSubscriptionToken);
   if (envSubscriptionToken && isWellFormedClaudeKey(envSubscriptionToken)) {
     return { mode: "subscription", secrets: { CLAUDE_CODE_OAUTH_TOKEN: envSubscriptionToken } };
