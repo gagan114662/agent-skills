@@ -1087,6 +1087,8 @@ function proofKindTitle(kind: MarketingBrief["metrics"][number]["proofKind"]): s
       return "An example so you can see the layout — not a number from your workspace yet.";
     case "live":
       return "A real number from your own workspace right now.";
+    default:
+      return "";
   }
 }
 
