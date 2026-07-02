@@ -260,6 +260,94 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(joined).toEqual(expect.arrayContaining(["scout", "quill", "echo", "lens"]));
   });
 
+  it("finishes Scout and launches Quill when Scout's artifact lands before its session joins (#1536)", async () => {
+    const launched: LaunchInput[] = [];
+    const canceled: string[] = [];
+    const { channel, events } = makeChannel();
+    const launcher: TeamLauncher = {
+      async launch(input) {
+        launched.push(input);
+        const isScout = input.agentMemberId === "mem_scout";
+        const isQuill = input.agentMemberId === "mem_quill";
+        if (isScout) {
+          setTimeout(() => {
+            void channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+          }, 0);
+          return { id: "scout-session" };
+        }
+        if (isQuill) {
+          setTimeout(() => {
+            void channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: draftSetEvent });
+          }, 0);
+          return { id: "quill-session" };
+        }
+        return { id: "session-" + launched.length };
+      },
+      async join(id) {
+        if (id === "scout-session") await new Promise(() => {});
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      },
+      async cancel(id) {
+        canceled.push(id);
+        return true;
+      },
+    };
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => new Date(Date.UTC(2026, 5, 8, 0, 0, events().length)).toISOString(),
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(2),
+      subtasks: [
+        {
+          subtaskId: "scout",
+          agentMemberId: "mem_scout",
+          task: "research acme.test",
+          branch: "b-scout",
+          phase: 1,
+          producesArtifacts: ["scout_research", "brand_voice"],
+          timeoutMs: 5_000,
+        },
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft launch copy",
+          branch: "b-quill",
+          phase: 2,
+          requiresArtifacts: ["scout_research", "brand_voice"],
+          producesArtifacts: ["draft_set"],
+          timeoutMs: 5_000,
+        },
+      ],
+    });
+
+    expect(result.results.every((item) => item.ok)).toBe(true);
+    expect(launched.map((input) => input.agentMemberId)).toEqual(["mem_scout", "mem_quill"]);
+    expect(canceled).toContain("scout-session");
+    expect(events()).toContainEqual(
+      expect.objectContaining({
+        subtaskId: "scout",
+        kind: "milestone",
+        artifact: expect.objectContaining({ kind: "brand_voice" }),
+      }),
+    );
+    expect(events()).toContainEqual(expect.objectContaining({ subtaskId: "scout", kind: "done" }));
+    expect(events()).toContainEqual(
+      expect.objectContaining({
+        subtaskId: "quill",
+        kind: "milestone",
+        artifact: expect.objectContaining({ kind: "draft_set" }),
+      }),
+    );
+    expect(events()).toContainEqual(expect.objectContaining({ subtaskId: "quill", kind: "done" }));
+    expect(launched[1]?.task).toContain("brand_voice");
+    expect(launched[1]?.task).toContain("proof-led over generic");
+  });
+
   it("blocks a writer before launch when required Scout research is missing (#1540)", async () => {
     const launcher = new FakeLauncher();
     const { channel, events } = makeChannel();
@@ -1010,6 +1098,58 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
       expect.objectContaining({
         kind: "dead_run",
         subtaskId: "quill",
+        pageOwner: true,
+      }),
+    ]);
+  });
+
+  it("surfaces a running subtask stuck past the watchdog window in the timeline (#1536)", async () => {
+    const { channel } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher: new FakeLauncher(),
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+    });
+    await channel.postEvent({
+      workspaceId: "ws_1",
+      channelId: "ch_1",
+      event: {
+        teamRunId: "run_1",
+        subtaskId: "scout",
+        agentMemberId: "mem_scout",
+        kind: "queued",
+        summary: "queued: Scout insight mining",
+        branch: "b-scout",
+        createdAt: "2026-06-08T00:00:00.000Z",
+      },
+    });
+    await channel.postEvent({
+      workspaceId: "ws_1",
+      channelId: "ch_1",
+      event: {
+        teamRunId: "run_1",
+        subtaskId: "scout",
+        agentMemberId: "mem_scout",
+        kind: "started",
+        summary: "started: Scout insight mining",
+        branch: "b-scout",
+        createdAt: "2026-06-08T00:00:01.000Z",
+      },
+    });
+
+    const timeline = await coordinator.timeline("ch_1", "run_1", {
+      nowMs: Date.parse("2026-06-08T00:02:01.000Z"),
+      stuckAfterMs: 60_000,
+    });
+
+    expect(timeline.state).toBe("running");
+    expect(timeline.alerts).toEqual([
+      expect.objectContaining({
+        kind: "dead_run",
+        subtaskId: "scout",
+        state: "running",
+        reason: "run is still running past its watchdog window",
         pageOwner: true,
       }),
     ]);

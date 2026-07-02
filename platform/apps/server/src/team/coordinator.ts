@@ -131,6 +131,7 @@ export interface TeamRunTimeline {
 
 const DEFAULT_MAX_ATTEMPTS = 1;
 const DEFAULT_STUCK_AFTER_MS = 60 * 60 * 1000;
+const PRODUCED_ARTIFACT_POLL_MS = 100;
 
 function subtaskLaneSummary(task: string): string {
   if (task.toLowerCase().includes("audit_label: codex_operator_lane")) {
@@ -231,6 +232,50 @@ function blockSummary(error: string): string {
   return /^blocked:/i.test(error) ? error : "blocked: " + error;
 }
 
+function compactArtifactText(value: string, fallback: string): string {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  return cleaned || fallback;
+}
+
+function deriveBrandVoiceFromResearch(
+  research: Extract<TeamArtifact, { kind: "scout_research" }>,
+): Extract<TeamArtifact, { kind: "brand_voice" }> {
+  const tone = compactArtifactText(research.toneNotes, "Plain, specific, proof-led.");
+  const positioning = compactArtifactText(research.positioning, "Turn observed proof into a clear next step.");
+  const icp = compactArtifactText(research.icp, "the specific buyer named in Scout research");
+  const proof = compactArtifactText(research.proofPoints[0] ?? "", positioning);
+  return {
+    kind: "brand_voice",
+    schemaVersion: 1,
+    profile: {
+      toneAxes: [tone, "proof-led over generic"],
+      vocabularyDo: [positioning.slice(0, 120), icp.slice(0, 120)],
+      vocabularyDont: ["unsupported claims", "generic hype", "fake urgency"],
+      sentenceRhythm: "Short setup, concrete proof, one useful next action.",
+      exampleLines: [positioning.slice(0, 160), proof.slice(0, 160)],
+    },
+    sourceUrls: research.sourceUrls,
+  };
+}
+
+function latestArtifact<K extends TeamArtifactKind>(
+  events: readonly TeamEvent[],
+  input: TeamRunInput,
+  subtask: Subtask,
+  kind: K,
+): Extract<TeamArtifact, { kind: K }> | null {
+  const artifact = events
+    .filter((event) => event.teamRunId === input.teamRunId && event.subtaskId === subtask.subtaskId)
+    .map((event) => event.artifact)
+    .filter((candidate): candidate is Extract<TeamArtifact, { kind: K }> => candidate?.kind === kind)
+    .at(-1);
+  return artifact ?? null;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function buildTeamRunTimeline(
   teamRunId: string,
   events: readonly TeamEvent[],
@@ -304,6 +349,18 @@ export function buildTeamRunTimeline(
   const nowMs = opts.nowMs ?? Date.now();
   const stuckAfterMs = opts.stuckAfterMs ?? DEFAULT_STUCK_AFTER_MS;
   const alerts = subtasks.flatMap<TeamRunTimelineAlert>((subtask) => {
+    if (subtask.state === "running" || subtask.state === "queued") {
+      const started = isoMs(subtask.startedAt);
+      if (started === null || nowMs - started < stuckAfterMs) return [];
+      return [{
+        kind: "dead_run",
+        subtaskId: subtask.subtaskId,
+        state: subtask.state,
+        reason: "run is still " + subtask.state + " past its watchdog window",
+        blockedForMs: nowMs - started,
+        pageOwner: true,
+      }];
+    }
     if (subtask.state !== "failed" && subtask.state !== "skipped") return [];
     const finished = isoMs(subtask.finishedAt);
     if (finished === null || nowMs - finished < stuckAfterMs) return [];
@@ -636,7 +693,27 @@ export class TeamCoordinator {
         sessionId = launched.id;
         lastSessionId = sessionId;
         const remainingTimeoutMs = timeoutMs === null ? null : Math.max(1, timeoutMs - (Date.now() - startedMs));
-        await this.withTimeout(this.deps.launcher.join(sessionId), remainingTimeoutMs);
+        let stopArtifactWait = false;
+        const joinPromise = this.withTimeout(this.deps.launcher.join(sessionId), remainingTimeoutMs).then(
+          () => "joined" as const,
+        );
+        const artifactPromise = uniqueArtifactKinds(subtask.producesArtifacts).length > 0
+          ? this.waitForProducedArtifacts(input, subtask, remainingTimeoutMs, () => stopArtifactWait)
+              .then(() => "artifacts" as const)
+          : null;
+        const completion = artifactPromise ? await Promise.race([joinPromise, artifactPromise]) : await joinPromise;
+        stopArtifactWait = true;
+        if (completion === "artifacts" && this.deps.launcher.cancel) {
+          void this.deps.launcher.cancel(sessionId).catch((cancelErr) => {
+            this.deps.logger.warn(
+              {
+                err: cancelErr instanceof Error ? cancelErr.message : String(cancelErr),
+                subtaskId: subtask.subtaskId,
+              },
+              "team subtask artifact-complete cancel failed",
+            );
+          });
+        }
         const missingProducedArtifacts = await this.missingProducedArtifacts(input, subtask);
         if (missingProducedArtifacts.length > 0) {
           throw new Error(
@@ -738,6 +815,27 @@ export class TeamCoordinator {
     });
   }
 
+  private async waitForProducedArtifacts(
+    input: TeamRunInput,
+    subtask: Subtask,
+    timeoutMs: number | null,
+    shouldStop: () => boolean,
+  ): Promise<void> {
+    const startedMs = Date.now();
+    for (;;) {
+      if (shouldStop()) return;
+      const missing = await this.missingProducedArtifacts(input, subtask);
+      if (missing.length === 0) return;
+      if (timeoutMs !== null) {
+        const elapsed = Date.now() - startedMs;
+        if (elapsed >= timeoutMs) throw new Error("timed out after " + timeoutMs + "ms");
+        await delay(Math.min(PRODUCED_ARTIFACT_POLL_MS, Math.max(1, timeoutMs - elapsed)));
+      } else {
+        await delay(PRODUCED_ARTIFACT_POLL_MS);
+      }
+    }
+  }
+
   private async prepareTask(
     input: TeamRunInput,
     subtask: Subtask,
@@ -774,7 +872,22 @@ export class TeamCoordinator {
   private async missingProducedArtifacts(input: TeamRunInput, subtask: Subtask): Promise<TeamArtifactKind[]> {
     const producedKinds = uniqueArtifactKinds(subtask.producesArtifacts);
     if (producedKinds.length === 0) return [];
-    const events = await this.readEvents(input.channelId, { limit: 200 });
+    let events = await this.readEvents(input.channelId, { limit: 200 });
+    if (producedKinds.includes("brand_voice") && producedKinds.includes("scout_research")) {
+      const hasBrandVoice = latestArtifact(events, input, subtask, "brand_voice");
+      const research = latestArtifact(events, input, subtask, "scout_research");
+      if (!hasBrandVoice && research) {
+        await this.announce(
+          input,
+          subtask,
+          "milestone",
+          "brand voice derived from Scout research",
+          { source: "scout_research" },
+          deriveBrandVoiceFromResearch(research),
+        );
+        events = await this.readEvents(input.channelId, { limit: 200 });
+      }
+    }
     return producedKinds.filter(
       (kind) =>
         !events.some(
@@ -793,6 +906,7 @@ export class TeamCoordinator {
     kind: TeamEventKind,
     summary: string,
     detail?: Record<string, unknown>,
+    artifact?: TeamArtifact,
   ): Promise<boolean> {
     const event: TeamEvent = {
       teamRunId: input.teamRunId,
@@ -802,6 +916,7 @@ export class TeamCoordinator {
       summary,
       branch: subtask.branch,
       ...(detail ? { detail } : {}),
+      ...(artifact ? { artifact } : {}),
       createdAt: this.now(),
     };
     const flushed = await this.flushPending(input.channelId);

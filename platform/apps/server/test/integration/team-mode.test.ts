@@ -32,6 +32,45 @@ const COMPLETING_HARNESS = [
     "setTimeout(() => console.log('agent: done'), 20);",
 ];
 
+const ARTIFACT_ROOM_HARNESS = [
+  "-e",
+  [
+    "const task = process.env.AGENT_TASK || '';",
+    "const pick = (name) => (task.match(new RegExp('\\\\\"' + name + '\\\\\": \\\\\"([^\\\\\"]+)\\\\\"')) || [])[1] || '';",
+    "const teamRunId = pick('teamRunId');",
+    "const subtaskId = pick('subtaskId');",
+    "const agentMemberId = pick('agentMemberId');",
+    "const branch = pick('branch');",
+    "const emit = (event) => console.log('::team-event:: ' + JSON.stringify(event));",
+    "if (task.includes('\\\"kind\\\": \\\"draft_set\\\"')) {",
+    "  emit({",
+    "    teamRunId, subtaskId, agentMemberId, kind: 'milestone', summary: 'draft set ready: getfoolish.com', branch, createdAt: '2026-07-02T00:00:01.000Z',",
+    "    artifact: { kind: 'draft_set', schemaVersion: 1, drafts: [{",
+    "      format: 'landing_hero',",
+    "      title: 'Foolish first-click hero',",
+    "      fields: { headline: 'Find the expensive leak before your next ad dollar', subhead: 'Get Foolish turns messy acquisition guesses into one focused next test.', cta: 'Find the leak' },",
+    "      citations: ['The homepage promises to find acquisition leaks']",
+    "    }] }",
+    "  });",
+    "} else if (task.includes('\\\"kind\\\": \\\"scout_research\\\"')) {",
+    "  emit({",
+    "    teamRunId, subtaskId, agentMemberId, kind: 'milestone', summary: 'research artifact ready: getfoolish.com', branch, createdAt: '2026-07-02T00:00:00.000Z',",
+    "    artifact: {",
+    "      kind: 'scout_research', schemaVersion: 1,",
+    "      siteSummary: 'Get Foolish helps teams find the expensive leak before the next ad dollar.',",
+    "      icp: 'Founders and growth leads with unclear acquisition performance',",
+    "      positioning: 'Find the expensive leak before your next ad dollar.',",
+    "      proofPoints: ['The homepage promises to find acquisition leaks', 'The product frames the next test as the useful action'],",
+    "      competitors: ['spreadsheet audit', 'generic agency review'],",
+    "      toneNotes: 'Plain, mischievous, evidence-first.',",
+    "      sourceUrls: ['https://getfoolish.com']",
+    "    }",
+    "  });",
+    "  setInterval(() => {}, 1000);",
+    "}",
+  ].join("\n"),
+];
+
 const apps: FastifyInstance[] = [];
 const slugs: string[] = [];
 
@@ -45,16 +84,17 @@ afterAll(async () => {
 async function startApp(
   maxConcurrency: number,
   codexSubscription?: CodexSubscriptionStatusProvider,
+  harnessArgs: string[] = COMPLETING_HARNESS,
 ): Promise<{ app: FastifyInstance; http: string }> {
   const manager = new SessionManager({
     runtime: new LocalRuntime(),
     store: dbStore,
     poster: channelPoster,
     secrets: new StaticSecretsResolver({}),
-    harness: { command: process.execPath, args: COMPLETING_HARNESS },
+    harness: { command: process.execPath, args: harnessArgs },
     harnessOverrides: () => ({
       command: process.execPath,
-      args: COMPLETING_HARNESS,
+      args: harnessArgs,
       decode: (line) => ({ display: [line], raw: null }),
     }),
     caps: { wallClockMs: 20_000, idleMs: 8_000 },
@@ -259,6 +299,85 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
       },
     });
     expect(typeof timeline.json().subtasks[0].durationMs).toBe("number");
+  });
+
+  it("drives Scout to done and Quill to a named draft artifact through the route (#1536)", async () => {
+    const { app } = await startApp(1, undefined, ARTIFACT_ROOM_HARNESS);
+    const w = await seed(app, 2);
+
+    const launch = await app.inject({
+      method: "POST",
+      url: `/channels/${w.channelId}/team-runs`,
+      cookies: { rid: w.cookie },
+      payload: {
+        subtasks: [
+          {
+            agentMemberId: w.agentMemberIds[0],
+            task: "research getfoolish.com",
+            branch: "ipop-scout-getfoolish",
+            phase: 1,
+            producesArtifacts: ["scout_research", "brand_voice"],
+            timeoutMs: 5_000,
+            maxAttempts: 1,
+          },
+          {
+            agentMemberId: w.agentMemberIds[1],
+            task: "draft first useful asset for getfoolish.com",
+            branch: "ipop-quill-getfoolish",
+            phase: 2,
+            requiresArtifacts: ["scout_research", "brand_voice"],
+            producesArtifacts: ["draft_set"],
+            timeoutMs: 5_000,
+            maxAttempts: 1,
+          },
+        ],
+      },
+    });
+    expect(launch.statusCode).toBe(201);
+    const body = launch.json();
+    expect(typeof body.teamRunId).toBe("string");
+
+    const events = await pollTeamEvents(app, w, body.teamRunId, { started: 2, done: 2 }, 15_000);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        kind: "milestone",
+        artifact: expect.objectContaining({ kind: "brand_voice" }),
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        subtaskId: body.subtasks[0].subtaskId,
+        kind: "done",
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        subtaskId: body.subtasks[1].subtaskId,
+        kind: "milestone",
+        artifact: expect.objectContaining({
+          kind: "draft_set",
+          drafts: [
+            expect.objectContaining({
+              title: "Foolish first-click hero",
+              fields: expect.objectContaining({
+                headline: "Find the expensive leak before your next ad dollar",
+              }),
+            }),
+          ],
+        }),
+      }),
+    );
+
+    const timeline = await app.inject({
+      method: "GET",
+      url: `/channels/${w.channelId}/team-runs/${body.teamRunId}/timeline`,
+      cookies: { rid: w.cookie },
+    });
+    expect(timeline.statusCode).toBe(200);
+    expect(timeline.json()).toMatchObject({
+      state: "done",
+      counts: { done: 2 },
+    });
   });
 
   it("rejects a subtask whose agent is not an agent member of this workspace (IDOR)", async () => {

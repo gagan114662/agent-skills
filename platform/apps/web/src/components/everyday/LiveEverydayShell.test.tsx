@@ -715,14 +715,18 @@ describe("LiveEverydayShell (#1181)", () => {
     const lens = subtasks.find((subtask) => subtask.branch.startsWith("ipop-lens-"));
     const scout = subtasks.find((subtask) => subtask.branch.startsWith("ipop-scout-"));
     expect(scout?.phase).toBe(1);
+    expect(scout?.timeoutMs).toBe(90_000);
     expect(scout?.producesArtifacts).toEqual(["scout_research", "brand_voice"]);
     expect(quill?.phase).toBe(2);
+    expect(quill?.timeoutMs).toBe(180_000);
     expect(quill?.requiresArtifacts).toEqual(["scout_research", "brand_voice"]);
     expect(quill?.producesArtifacts).toEqual(["draft_set"]);
     expect(lens?.phase).toBe(3);
+    expect(lens?.timeoutMs).toBe(120_000);
     expect(lens?.requiresArtifacts).toEqual(["scout_research", "brand_voice", "draft_set"]);
     expect(lens?.producesArtifacts).toEqual(["lens_review"]);
     expect(echo?.phase).toBe(4);
+    expect(echo?.timeoutMs).toBe(120_000);
     expect(echo?.requiresArtifacts).toEqual(["scout_research", "brand_voice", "draft_set", "lens_review"]);
     expect(quill?.task).toContain("You own the drafts");
     expect(quill?.task).toContain("brand_voice");
@@ -747,6 +751,7 @@ describe("LiveEverydayShell (#1181)", () => {
       expect(subtask.task).toContain("Do not send, publish, spend");
     }
     const operator = subtasks.find((subtask) => subtask.branch.startsWith("ipop-codex-"));
+    expect(operator?.timeoutMs).toBe(180_000);
     expect(operator?.task).toContain("codex_work_packet");
     expect(operator?.task).toContain("audit_label: codex_operator_lane");
     expect(operator?.task).toContain("credential_boundary");

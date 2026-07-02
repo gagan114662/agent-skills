@@ -592,17 +592,27 @@ interface RoomAgentSpec {
   readonly role: RoomAgentRole;
   readonly lane: string;
   readonly phase: number;
+  readonly timeoutMs?: number;
   readonly producesArtifacts?: readonly TeamArtifactKind[];
   readonly requiresArtifacts?: readonly TeamArtifactKind[];
   readonly immediateRequest: (goal: string) => string;
   readonly outputFormat: readonly string[];
 }
 
+const ROOM_AGENT_TIMEOUTS = {
+  scout: 90_000,
+  quill: 180_000,
+  lens: 120_000,
+  echo: 120_000,
+  codex: 180_000,
+} as const;
+
 const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
   {
     role: "Scout",
     lane: "insight mining",
     phase: 1,
+    timeoutMs: ROOM_AGENT_TIMEOUTS.scout,
     producesArtifacts: ["scout_research", "brand_voice"],
     immediateRequest: (goal) =>
       "Mine customer/category/product/user/time/space insights for " +
@@ -618,6 +628,7 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     role: "Quill",
     lane: "creative platform",
     phase: 2,
+    timeoutMs: ROOM_AGENT_TIMEOUTS.quill,
     requiresArtifacts: ["scout_research", "brand_voice"],
     producesArtifacts: ["draft_set"],
     immediateRequest: (goal) =>
@@ -637,6 +648,7 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     role: "Lens",
     lane: "taste and proof",
     phase: 3,
+    timeoutMs: ROOM_AGENT_TIMEOUTS.lens,
     requiresArtifacts: ["scout_research", "brand_voice", "draft_set"],
     producesArtifacts: ["lens_review"],
     immediateRequest: (goal) =>
@@ -654,6 +666,7 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     role: "Echo",
     lane: "distribution",
     phase: 4,
+    timeoutMs: ROOM_AGENT_TIMEOUTS.echo,
     requiresArtifacts: ["scout_research", "brand_voice", "draft_set", "lens_review"],
     immediateRequest: (goal) =>
       "Plan the first outreach/content distribution moves for " +
@@ -669,6 +682,7 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     role: "Codex",
     lane: "codex_operator_lane",
     phase: 5,
+    timeoutMs: ROOM_AGENT_TIMEOUTS.codex,
     requiresArtifacts: ["lens_review"],
     immediateRequest: (goal) =>
       "Act as the implementation operator for the marketing room. Convert approved product, website, workflow, connector, or observability decisions into implementation tasks, PRs, issues, or verified fixes for " +
@@ -815,6 +829,7 @@ async function launchCodexRoomRun(
       task: structuredRoomTask(spec, goal),
       branch: "ipop-" + slug(spec.role) + "-" + slug(goal),
       phase: spec.phase,
+      ...(spec.timeoutMs ? { timeoutMs: spec.timeoutMs } : {}),
       ...(spec.producesArtifacts ? { producesArtifacts: [...spec.producesArtifacts] } : {}),
       ...(spec.requiresArtifacts ? { requiresArtifacts: [...spec.requiresArtifacts] } : {}),
       harness: "codex",
