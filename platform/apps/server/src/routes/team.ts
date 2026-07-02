@@ -43,7 +43,7 @@ function parseSubtaskPhase(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
-const TEAM_ARTIFACT_KINDS: readonly TeamArtifactKind[] = ["scout_research", "draft_set", "lens_review"];
+const TEAM_ARTIFACT_KINDS: readonly TeamArtifactKind[] = ["scout_research", "brand_voice", "draft_set", "lens_review"];
 
 function parseArtifactKinds(value: unknown): TeamArtifactKind[] | null {
   if (value === undefined) return [];

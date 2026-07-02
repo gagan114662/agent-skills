@@ -131,7 +131,7 @@ export interface PolicySimulationResult {
 export type TeamEventKind = "started" | "milestone" | "blocked" | "needs_handoff" | "done";
 
 /** Typed artifacts teammates can hand off during a team run. */
-export type TeamArtifactKind = "scout_research" | "draft_set" | "lens_review";
+export type TeamArtifactKind = "scout_research" | "brand_voice" | "draft_set" | "lens_review";
 
 /**
  * Scout's research handoff for downstream writers. This is intentionally compact enough to fit in a
@@ -147,6 +147,28 @@ export interface ScoutResearchArtifact {
   competitors: string[];
   toneNotes: string;
   sourceUrls: string[];
+}
+
+/** The workspace voice model every channel draft must follow. */
+export interface BrandVoiceProfile {
+  toneAxes: string[];
+  vocabularyDo: string[];
+  vocabularyDont: string[];
+  sentenceRhythm: string;
+  exampleLines: string[];
+}
+
+/** Scout/owner-edit handoff that keeps copy consistent across runs and channels. */
+export interface BrandVoiceArtifact {
+  kind: "brand_voice";
+  schemaVersion: 1;
+  profile: BrandVoiceProfile;
+  sourceUrls: string[];
+  updatedFromOwnerEdit?: {
+    originalExcerpt: string;
+    editedExcerpt: string;
+    learnedAt: string;
+  };
 }
 
 /** The first channel-native formats Quill can hand off to Lens/owner review. */
@@ -203,11 +225,16 @@ export interface LensReviewArtifact {
   reviews: LensDraftReview[];
 }
 
-export type TeamArtifact = ScoutResearchArtifact | DraftSetArtifact | LensReviewArtifact;
+export type TeamArtifact = ScoutResearchArtifact | BrandVoiceArtifact | DraftSetArtifact | LensReviewArtifact;
 
 export interface DraftValidationIssue {
   format: MarketingDraftFormat;
   title: string;
+  field: string;
+  message: string;
+}
+
+export interface BrandVoiceValidationIssue {
   field: string;
   message: string;
 }
@@ -356,6 +383,46 @@ export function validateDraftSetArtifact(artifact: DraftSetArtifact): DraftValid
   const issues = artifact.drafts.flatMap(validateMarketingDraft);
   if (artifact.drafts.length === 0) {
     issues.push({ format: "email", title: "draft_set", field: "drafts", message: "must include at least one draft" });
+  }
+  return issues;
+}
+
+function pushBrandVoiceStringListIssue(
+  issues: BrandVoiceValidationIssue[],
+  profile: BrandVoiceProfile,
+  field: keyof Pick<BrandVoiceProfile, "toneAxes" | "vocabularyDo" | "vocabularyDont" | "exampleLines">,
+): void {
+  const list = profile[field];
+  if (list.length === 0) {
+    issues.push({ field, message: "must include at least one item" });
+  }
+  if (list.some((item) => !item.trim())) {
+    issues.push({ field, message: "must not include blank items" });
+  }
+}
+
+export function validateBrandVoiceArtifact(artifact: BrandVoiceArtifact): BrandVoiceValidationIssue[] {
+  const issues: BrandVoiceValidationIssue[] = [];
+  pushBrandVoiceStringListIssue(issues, artifact.profile, "toneAxes");
+  pushBrandVoiceStringListIssue(issues, artifact.profile, "vocabularyDo");
+  pushBrandVoiceStringListIssue(issues, artifact.profile, "vocabularyDont");
+  pushBrandVoiceStringListIssue(issues, artifact.profile, "exampleLines");
+  if (!artifact.profile.sentenceRhythm.trim()) {
+    issues.push({ field: "sentenceRhythm", message: "required" });
+  }
+  if (artifact.sourceUrls.some((url) => !url.trim())) {
+    issues.push({ field: "sourceUrls", message: "must not include blank URLs" });
+  }
+  if (artifact.updatedFromOwnerEdit) {
+    if (!artifact.updatedFromOwnerEdit.originalExcerpt.trim()) {
+      issues.push({ field: "updatedFromOwnerEdit.originalExcerpt", message: "required" });
+    }
+    if (!artifact.updatedFromOwnerEdit.editedExcerpt.trim()) {
+      issues.push({ field: "updatedFromOwnerEdit.editedExcerpt", message: "required" });
+    }
+    if (!artifact.updatedFromOwnerEdit.learnedAt.trim()) {
+      issues.push({ field: "updatedFromOwnerEdit.learnedAt", message: "required" });
+    }
   }
   return issues;
 }

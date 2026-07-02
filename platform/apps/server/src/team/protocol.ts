@@ -1,4 +1,6 @@
 import type {
+  BrandVoiceArtifact,
+  BrandVoiceProfile,
   ContentRubricMetric,
   DraftRubricScores,
   DraftSetArtifact,
@@ -38,6 +40,10 @@ function isStringArray(value: unknown): value is string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasBlank(values: readonly string[]): boolean {
+  return values.some((value) => !value.trim());
 }
 
 const MARKETING_DRAFT_FORMATS: readonly MarketingDraftFormat[] = [
@@ -184,6 +190,35 @@ function validateDraftSetArtifact(artifact: DraftSetArtifact): string[] {
   return issues;
 }
 
+function brandVoiceListIssue(profile: BrandVoiceProfile, field: keyof Pick<BrandVoiceProfile, "toneAxes" | "vocabularyDo" | "vocabularyDont" | "exampleLines">): string | null {
+  const list = profile[field];
+  if (list.length === 0) return "brand_voice.profile." + field + ": must include at least one item";
+  if (hasBlank(list)) return "brand_voice.profile." + field + ": must not include blank items";
+  return null;
+}
+
+function validateBrandVoiceArtifact(artifact: BrandVoiceArtifact): string[] {
+  const issues: string[] = [];
+  for (const field of ["toneAxes", "vocabularyDo", "vocabularyDont", "exampleLines"] as const) {
+    const issue = brandVoiceListIssue(artifact.profile, field);
+    if (issue) issues.push(issue);
+  }
+  if (!artifact.profile.sentenceRhythm.trim()) issues.push("brand_voice.profile.sentenceRhythm: required");
+  if (hasBlank(artifact.sourceUrls)) issues.push("brand_voice.sourceUrls: must not include blank URLs");
+  if (artifact.updatedFromOwnerEdit) {
+    if (!artifact.updatedFromOwnerEdit.originalExcerpt.trim()) {
+      issues.push("brand_voice.updatedFromOwnerEdit.originalExcerpt: required");
+    }
+    if (!artifact.updatedFromOwnerEdit.editedExcerpt.trim()) {
+      issues.push("brand_voice.updatedFromOwnerEdit.editedExcerpt: required");
+    }
+    if (!artifact.updatedFromOwnerEdit.learnedAt.trim()) {
+      issues.push("brand_voice.updatedFromOwnerEdit.learnedAt: required");
+    }
+  }
+  return issues;
+}
+
 function rubricAverage(scores: DraftRubricScores): number {
   const total = CONTENT_RUBRIC_METRICS.reduce((sum, metric) => sum + scores[metric], 0);
   return Math.round((total / CONTENT_RUBRIC_METRICS.length) * 10) / 10;
@@ -294,6 +329,64 @@ function parseScoutResearchArtifact(input: Record<string, unknown>): ScoutResear
   };
 }
 
+function parseBrandVoiceProfile(input: unknown): BrandVoiceProfile | null {
+  if (!isRecord(input)) return null;
+  if (
+    !isStringArray(input.toneAxes) ||
+    !isStringArray(input.vocabularyDo) ||
+    !isStringArray(input.vocabularyDont) ||
+    typeof input.sentenceRhythm !== "string" ||
+    !isStringArray(input.exampleLines)
+  ) {
+    return null;
+  }
+  return {
+    toneAxes: input.toneAxes,
+    vocabularyDo: input.vocabularyDo,
+    vocabularyDont: input.vocabularyDont,
+    sentenceRhythm: input.sentenceRhythm,
+    exampleLines: input.exampleLines,
+  };
+}
+
+function parseBrandVoiceArtifact(input: Record<string, unknown>): { artifact: BrandVoiceArtifact | null; error: string | null } {
+  if (input.kind !== "brand_voice" || input.schemaVersion !== 1 || !isStringArray(input.sourceUrls)) {
+    return { artifact: null, error: "brand_voice: expected schemaVersion 1, profile, and sourceUrls array" };
+  }
+  const profile = parseBrandVoiceProfile(input.profile);
+  if (!profile) {
+    return { artifact: null, error: "brand_voice.profile: malformed profile" };
+  }
+  let updatedFromOwnerEdit: BrandVoiceArtifact["updatedFromOwnerEdit"] | undefined;
+  if (input.updatedFromOwnerEdit !== undefined) {
+    if (!isRecord(input.updatedFromOwnerEdit)) {
+      return { artifact: null, error: "brand_voice.updatedFromOwnerEdit: malformed owner edit" };
+    }
+    const edit = input.updatedFromOwnerEdit;
+    if (
+      typeof edit.originalExcerpt !== "string" ||
+      typeof edit.editedExcerpt !== "string" ||
+      typeof edit.learnedAt !== "string"
+    ) {
+      return { artifact: null, error: "brand_voice.updatedFromOwnerEdit: malformed owner edit" };
+    }
+    updatedFromOwnerEdit = {
+      originalExcerpt: edit.originalExcerpt,
+      editedExcerpt: edit.editedExcerpt,
+      learnedAt: edit.learnedAt,
+    };
+  }
+  const artifact: BrandVoiceArtifact = {
+    kind: "brand_voice",
+    schemaVersion: 1,
+    profile,
+    sourceUrls: input.sourceUrls,
+    ...(updatedFromOwnerEdit ? { updatedFromOwnerEdit } : {}),
+  };
+  const issues = validateBrandVoiceArtifact(artifact);
+  return issues.length === 0 ? { artifact, error: null } : { artifact: null, error: issues[0] ?? "brand_voice: invalid" };
+}
+
 type ArtifactParseResult =
   | { ok: true; artifact: TeamArtifact }
   | { ok: false; kind: string | null; error: string | null };
@@ -349,6 +442,10 @@ function parseArtifact(input: unknown): ArtifactParseResult {
   if (artifact.kind === "scout_research") {
     const parsed = parseScoutResearchArtifact(artifact);
     return parsed ? { ok: true, artifact: parsed } : { ok: false, kind: "scout_research", error: null };
+  }
+  if (artifact.kind === "brand_voice") {
+    const parsed = parseBrandVoiceArtifact(artifact);
+    return parsed.artifact ? { ok: true, artifact: parsed.artifact } : { ok: false, kind: "brand_voice", error: parsed.error };
   }
   if (artifact.kind === "draft_set") {
     const parsed = parseDraftSetArtifact(artifact);

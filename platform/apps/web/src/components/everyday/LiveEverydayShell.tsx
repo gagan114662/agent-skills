@@ -524,11 +524,11 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     role: "Scout",
     lane: "insight mining",
     phase: 1,
-    producesArtifacts: ["scout_research"],
+    producesArtifacts: ["scout_research", "brand_voice"],
     immediateRequest: (goal) =>
       "Mine customer/category/product/user/time/space insights for " +
       goal +
-      " from public evidence. Rank the strongest tensions before recommending work. Produce the required scout_research artifact before you mark the lane done.",
+      " from public evidence. Rank the strongest tensions before recommending work. Produce the required scout_research and brand_voice artifacts before you mark the lane done.",
     outputFormat: [
       "top 5 ranked insights with evidence strength",
       "what to ask the brand next",
@@ -539,12 +539,12 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     role: "Quill",
     lane: "creative platform",
     phase: 2,
-    requiresArtifacts: ["scout_research"],
+    requiresArtifacts: ["scout_research", "brand_voice"],
     producesArtifacts: ["draft_set"],
     immediateRequest: (goal) =>
-      "You own the drafts. Use the validated Scout research artifact that the coordinator injects into this task, then turn its strongest proof points into a distinctive marketing platform for " +
+      "You own the drafts. Use the validated Scout research and brand_voice artifacts that the coordinator injects into this task, then turn the strongest proof points into a distinctive marketing platform for " +
       goal +
-      ". Produce named, approval-ready draft assets for every format the owner requested. Reference award-winning work from another category and adapt the mechanism, not the surface. Produce the required draft_set artifact with channel-native formats that pass validation, and cite the artifact proofPoints or sourceUrls used by each draft.",
+      ". Produce named, approval-ready draft assets for every format the owner requested. Reference award-winning work from another category and adapt the mechanism, not the surface. Produce the required draft_set artifact with channel-native formats that pass validation, and cite the artifact proofPoints, sourceUrls, or brand_voice rules used by each draft.",
     outputFormat: [
       "campaign platform",
       "why it is not generic AI copy",
@@ -558,12 +558,12 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     role: "Lens",
     lane: "taste and proof",
     phase: 3,
-    requiresArtifacts: ["scout_research", "draft_set"],
+    requiresArtifacts: ["scout_research", "brand_voice", "draft_set"],
     producesArtifacts: ["lens_review"],
     immediateRequest: (goal) =>
       "Score every Quill draft for " +
       goal +
-      " before it reaches the owner. Use the injected Scout research and draft_set artifacts; apply the six-part rubric (specificity to business, hook strength, clarity, evidence use, CTA quality, voice consistency), write one concrete revision note per draft, and produce the required lens_review artifact. If any draft scores below 4, revise it once in the artifact before handoff. If a required draft is missing, name the missing artifact and the agent lane that failed instead of reviewing an empty workspace.",
+      " before it reaches the owner. Use the injected Scout research, brand_voice, and draft_set artifacts; apply the six-part rubric (specificity to business, hook strength, clarity, evidence use, CTA quality, voice consistency against the voice profile), write one concrete revision note per draft, and produce the required lens_review artifact. If any draft scores below 4, revise it once in the artifact before handoff. If a required draft is missing, name the missing artifact and the agent lane that failed instead of reviewing an empty workspace.",
     outputFormat: [
       "rubric scores per draft",
       "one concrete revision note per draft",
@@ -575,11 +575,11 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     role: "Echo",
     lane: "distribution",
     phase: 4,
-    requiresArtifacts: ["scout_research", "draft_set", "lens_review"],
+    requiresArtifacts: ["scout_research", "brand_voice", "draft_set", "lens_review"],
     immediateRequest: (goal) =>
       "Plan the first outreach/content distribution moves for " +
       goal +
-      ". Use the injected Lens scores and revised drafts; do not send externally; prepare approval-ready drafts and connector blockers.",
+      ". Use the injected brand_voice profile, Lens scores, and revised drafts; do not send externally; prepare approval-ready drafts and connector blockers.",
     outputFormat: [
       "channel sequence",
       "Lens-scored approval-ready drafts",
