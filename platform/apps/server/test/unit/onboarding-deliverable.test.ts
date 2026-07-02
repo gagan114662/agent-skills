@@ -236,6 +236,34 @@ describe("readSiteSnapshot SSRF guard (#1530)", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("parses a large modern homepage from its readable prefix instead of discarding it (#1530)", async () => {
+    // Real Next.js/JS-framework homepages (e.g. vercel.com, stripe.com) inflate well past the byte cap,
+    // but the <title>/<h1> live in the early markup. We must read the safe prefix and personalize from it —
+    // not return null and dead-end the prospect at a 502.
+    const bigHtml =
+      "<!doctype html><title>Agentic Infrastructure - Vercel</title><h1>Ship with agents</h1>" +
+      "<a>Start deploying</a>" +
+      "<p>" +
+      "x".repeat(900 * 1024) +
+      "</p>";
+    const fetchImpl = vi.fn<PublicWebFetch>(
+      async () =>
+        new Response(bigHtml, { status: 200, headers: { "content-type": "text/html" } }),
+    );
+
+    await expect(
+      readSiteSnapshot(
+        { url: "https://vercel.com", host: "vercel.com", name: "Vercel" },
+        fetchImpl,
+        publicResolver,
+      ),
+    ).resolves.toMatchObject({
+      status: 200,
+      title: "Agentic Infrastructure - Vercel",
+      h1: "Ship with agents",
+    });
+  });
+
   it("returns a truthful deliverable snapshot when the public homepage serves an HTTP error", async () => {
     const fetchImpl = vi.fn<PublicWebFetch>(async () => {
       return new Response(
