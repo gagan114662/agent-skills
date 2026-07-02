@@ -128,7 +128,7 @@ export interface PolicySimulationResult {
  * pick something up), `done` (subtask finished). Reading recent events before acting is how agents
  * avoid duplicate or conflicting work.
  */
-export type TeamEventKind = "started" | "milestone" | "blocked" | "needs_handoff" | "done";
+export type TeamEventKind = "queued" | "started" | "milestone" | "blocked" | "needs_handoff" | "done";
 
 /** Typed artifacts teammates can hand off during a team run. */
 export type TeamArtifactKind = "scout_research" | "brand_voice" | "draft_set" | "lens_review";
@@ -498,6 +498,8 @@ export interface TeamEvent {
   branch: string | null;
   /** Optional structured handoff artifact produced by this event. */
   artifact?: TeamArtifact | null;
+  /** Optional coordinator metadata used to reconstruct run timelines without a separate run table. */
+  detail?: Record<string, unknown> | null;
   /** ISO-8601 timestamp the event was created. */
   createdAt: string;
 }

@@ -17,6 +17,7 @@ import type { TeamChannel } from "./channel.js";
 export interface TeamLauncher {
   launch(input: LaunchInput): Promise<{ id: string }>;
   join(id: string): Promise<void>;
+  cancel?(id: string): Promise<boolean>;
 }
 
 /** One unit of parallel work in a team run: an agent, its prompt, and the branch it owns. */
@@ -37,6 +38,10 @@ export interface Subtask {
   requiresArtifacts?: TeamArtifactKind[];
   /** Optional per-subtask harness override. Codex operator lanes use this to make Codex the actual brain. */
   preferredHarness?: HarnessKind;
+  /** Per-subtask wall-clock guard. A timed-out session is canceled before retry/failure is surfaced. */
+  timeoutMs?: number;
+  /** Total attempts, including the first try. The route defaults this to 2 for one retry. */
+  maxAttempts?: number;
 }
 
 export interface TeamRunInput {
@@ -53,6 +58,8 @@ export interface SubtaskResult {
   subtaskId: string;
   sessionId: string | null;
   ok: boolean;
+  attempts: number;
+  durationMs: number | null;
   visibilityDegraded?: boolean;
   error?: string;
 }
@@ -74,6 +81,56 @@ export interface TeamCoordinatorDeps {
   /** Injectable clock for deterministic event timestamps in tests. */
   now?: () => string;
 }
+
+export type TeamTimelineState = "queued" | "running" | "done" | "failed" | "skipped";
+
+export interface TeamRunTimelineSubtask {
+  subtaskId: string;
+  agentMemberId: string;
+  branch: string | null;
+  state: TeamTimelineState;
+  input: {
+    task: string | null;
+    phase: number;
+    producesArtifacts: TeamArtifactKind[];
+    requiresArtifacts: TeamArtifactKind[];
+    harness: HarnessKind | null;
+    timeoutMs: number | null;
+    maxAttempts: number;
+  };
+  attempts: number;
+  sessionIds: string[];
+  artifactKinds: TeamArtifactKind[];
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  reason: string | null;
+  events: TeamEvent[];
+}
+
+export interface TeamRunTimelineAlert {
+  kind: "dead_run";
+  subtaskId: string;
+  state: TeamTimelineState;
+  reason: string;
+  blockedForMs: number;
+  pageOwner: true;
+}
+
+export interface TeamRunTimeline {
+  teamRunId: string;
+  state: TeamTimelineState;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  subtaskCount: number;
+  counts: Record<TeamTimelineState, number>;
+  subtasks: TeamRunTimelineSubtask[];
+  alerts: TeamRunTimelineAlert[];
+}
+
+const DEFAULT_MAX_ATTEMPTS = 1;
+const DEFAULT_STUCK_AFTER_MS = 60 * 60 * 1000;
 
 function subtaskLaneSummary(task: string): string {
   if (task.toLowerCase().includes("audit_label: codex_operator_lane")) {
@@ -97,6 +154,180 @@ function normalizePhase(phase: number | undefined): number {
 
 function uniqueArtifactKinds(kinds: readonly TeamArtifactKind[] | undefined): TeamArtifactKind[] {
   return [...new Set(kinds ?? [])];
+}
+
+function safeSubtaskAttempts(subtask: Subtask): number {
+  if (typeof subtask.maxAttempts !== "number" || !Number.isInteger(subtask.maxAttempts)) return DEFAULT_MAX_ATTEMPTS;
+  return Math.max(1, Math.min(subtask.maxAttempts, 3));
+}
+
+function safeSubtaskTimeoutMs(subtask: Subtask): number | null {
+  if (typeof subtask.timeoutMs !== "number" || !Number.isFinite(subtask.timeoutMs)) return null;
+  return Math.max(1, Math.floor(subtask.timeoutMs));
+}
+
+function isoMs(value: string | null): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function elapsedMs(startedAt: string | null, finishedAt: string | null): number | null {
+  const start = isoMs(startedAt);
+  const finish = isoMs(finishedAt);
+  if (start === null || finish === null || finish < start) return null;
+  return finish - start;
+}
+
+function stringDetail(detail: Record<string, unknown> | null | undefined, key: string): string | null {
+  const value = detail?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function numberDetail(detail: Record<string, unknown> | null | undefined, key: string): number | null {
+  const value = detail?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function artifactKindsFromEvents(events: readonly TeamEvent[]): TeamArtifactKind[] {
+  return [...new Set(events.map((event) => event.artifact?.kind).filter((kind): kind is TeamArtifactKind => !!kind))];
+}
+
+function inputDetailForTimeline(subtask: Subtask): TeamRunTimelineSubtask["input"] {
+  return {
+    task: subtask.task.slice(0, 1200),
+    phase: normalizePhase(subtask.phase),
+    producesArtifacts: uniqueArtifactKinds(subtask.producesArtifacts),
+    requiresArtifacts: uniqueArtifactKinds(subtask.requiresArtifacts),
+    harness: subtask.preferredHarness ?? null,
+    timeoutMs: safeSubtaskTimeoutMs(subtask),
+    maxAttempts: safeSubtaskAttempts(subtask),
+  };
+}
+
+function isSkippedBlock(event: TeamEvent): boolean {
+  return event.kind === "blocked" && /missing required artifact/i.test(event.summary);
+}
+
+function stateFromEvents(events: readonly TeamEvent[]): TeamTimelineState {
+  const lastTerminal = [...events].reverse().find((event) => event.kind === "done" || event.kind === "blocked");
+  if (lastTerminal?.kind === "done") return "done";
+  if (lastTerminal?.kind === "blocked") return isSkippedBlock(lastTerminal) ? "skipped" : "failed";
+  if (events.some((event) => event.kind === "started")) return "running";
+  return "queued";
+}
+
+function timelineCounts(subtasks: readonly TeamRunTimelineSubtask[]): Record<TeamTimelineState, number> {
+  return subtasks.reduce<Record<TeamTimelineState, number>>(
+    (counts, subtask) => {
+      counts[subtask.state] += 1;
+      return counts;
+    },
+    { queued: 0, running: 0, done: 0, failed: 0, skipped: 0 },
+  );
+}
+
+function blockSummary(error: string): string {
+  return /^blocked:/i.test(error) ? error : "blocked: " + error;
+}
+
+export function buildTeamRunTimeline(
+  teamRunId: string,
+  events: readonly TeamEvent[],
+  opts: { nowMs?: number; stuckAfterMs?: number } = {},
+): TeamRunTimeline {
+  const matching = events.filter((event) => event.teamRunId === teamRunId);
+  const bySubtask = new Map<string, TeamEvent[]>();
+  for (const event of matching) {
+    const list = bySubtask.get(event.subtaskId) ?? [];
+    list.push(event);
+    bySubtask.set(event.subtaskId, list);
+  }
+
+  const subtasks = [...bySubtask.entries()].map<TeamRunTimelineSubtask>(([subtaskId, subtaskEvents]) => {
+    const first = subtaskEvents[0]!;
+    const queued = subtaskEvents.find((event) => event.kind === "queued");
+    const started = subtaskEvents.find((event) => event.kind === "started");
+    const terminal = [...subtaskEvents].reverse().find((event) => event.kind === "done" || event.kind === "blocked");
+    const state = stateFromEvents(subtaskEvents);
+    const input = queued?.detail?.input && typeof queued.detail.input === "object" && !Array.isArray(queued.detail.input)
+      ? queued.detail.input as Partial<TeamRunTimelineSubtask["input"]>
+      : {};
+    const startedAt = started?.createdAt ?? null;
+    const finishedAt = terminal?.createdAt ?? null;
+    return {
+      subtaskId,
+      agentMemberId: first.agentMemberId,
+      branch: first.branch,
+      state,
+      input: {
+        task: typeof input.task === "string" ? input.task : null,
+        phase: typeof input.phase === "number" ? input.phase : 1,
+        producesArtifacts: Array.isArray(input.producesArtifacts) ? input.producesArtifacts as TeamArtifactKind[] : [],
+        requiresArtifacts: Array.isArray(input.requiresArtifacts) ? input.requiresArtifacts as TeamArtifactKind[] : [],
+        harness: typeof input.harness === "string" ? input.harness as HarnessKind : null,
+        timeoutMs: typeof input.timeoutMs === "number" ? input.timeoutMs : null,
+        maxAttempts: typeof input.maxAttempts === "number" ? input.maxAttempts : 1,
+      },
+      attempts: Math.max(
+        0,
+        ...subtaskEvents.map((event) => numberDetail(event.detail, "attempt") ?? 0),
+      ),
+      sessionIds: [
+        ...new Set(subtaskEvents.map((event) => stringDetail(event.detail, "sessionId")).filter((id): id is string => !!id)),
+      ],
+      artifactKinds: artifactKindsFromEvents(subtaskEvents),
+      startedAt,
+      finishedAt,
+      durationMs: numberDetail(terminal?.detail, "durationMs") ?? elapsedMs(startedAt, finishedAt),
+      reason: terminal?.kind === "blocked" ? terminal.summary.replace(/^blocked:\s*/i, "") : null,
+      events: subtaskEvents,
+    };
+  }).sort((a, b) => {
+    const phase = a.input.phase - b.input.phase;
+    if (phase !== 0) return phase;
+    return a.subtaskId.localeCompare(b.subtaskId);
+  });
+
+  const counts = timelineCounts(subtasks);
+  const startedAt = subtasks.map((subtask) => subtask.startedAt).filter((value): value is string => !!value).sort()[0] ?? null;
+  const unfinished = subtasks.some((subtask) => subtask.state === "queued" || subtask.state === "running");
+  const finishedAt = unfinished
+    ? null
+    : subtasks.map((subtask) => subtask.finishedAt).filter((value): value is string => !!value).sort().at(-1) ?? null;
+  const state: TeamTimelineState =
+    counts.failed > 0 ? "failed" :
+    counts.skipped > 0 ? "skipped" :
+    counts.running > 0 ? "running" :
+    counts.queued > 0 ? "queued" :
+    "done";
+  const nowMs = opts.nowMs ?? Date.now();
+  const stuckAfterMs = opts.stuckAfterMs ?? DEFAULT_STUCK_AFTER_MS;
+  const alerts = subtasks.flatMap<TeamRunTimelineAlert>((subtask) => {
+    if (subtask.state !== "failed" && subtask.state !== "skipped") return [];
+    const finished = isoMs(subtask.finishedAt);
+    if (finished === null || nowMs - finished < stuckAfterMs) return [];
+    return [{
+      kind: "dead_run",
+      subtaskId: subtask.subtaskId,
+      state: subtask.state,
+      reason: subtask.reason ?? "run is blocked without a recorded reason",
+      blockedForMs: nowMs - finished,
+      pageOwner: true,
+    }];
+  });
+
+  return {
+    teamRunId,
+    state,
+    startedAt,
+    finishedAt,
+    durationMs: elapsedMs(startedAt, finishedAt),
+    subtaskCount: subtasks.length,
+    counts,
+    subtasks,
+    alerts,
+  };
 }
 
 function artifactLabel(kind: TeamArtifactKind): string {
@@ -276,6 +507,7 @@ export class TeamCoordinator {
 
   async runTeam(input: TeamRunInput): Promise<TeamRunResult> {
     const results: SubtaskResult[] = new Array<SubtaskResult>(input.subtasks.length);
+    const visibilityDegradedByIndex = new Array<boolean>(input.subtasks.length).fill(false);
 
     const body = async (ctx: TeamSpanContext): Promise<{ completed: number; failed: number }> => {
       const entries = input.subtasks
@@ -285,6 +517,12 @@ export class TeamCoordinator {
           phase: normalizePhase(subtask.phase),
         }))
         .sort((a, b) => (a.phase === b.phase ? a.index - b.index : a.phase - b.phase));
+      for (const entry of entries) {
+        const delivered = await this.announce(input, entry.subtask, "queued", "queued: " + subtaskLaneSummary(entry.subtask.task), {
+          input: inputDetailForTimeline(entry.subtask),
+        });
+        visibilityDegradedByIndex[entry.index] = !delivered;
+      }
       const phases = [...new Set(entries.map((entry) => entry.phase))];
       for (const phase of phases) {
         const phaseEntries = entries.filter((entry) => entry.phase === phase);
@@ -293,7 +531,11 @@ export class TeamCoordinator {
           for (;;) {
             const entry = phaseEntries[next++];
             if (!entry) return;
-            results[entry.index] = await this.runSubtask(input, entry.subtask, ctx.parentSpanId);
+            const result = await this.runSubtask(input, entry.subtask, ctx.parentSpanId);
+            results[entry.index] = {
+              ...result,
+              visibilityDegraded: visibilityDegradedByIndex[entry.index] || result.visibilityDegraded,
+            };
           }
         };
         // At most maxConcurrency sessions in flight; never spawn more workers than phase subtasks.
@@ -329,6 +571,15 @@ export class TeamCoordinator {
     return this.deps.channel.readRecentEvents(channelId, opts);
   }
 
+  async timeline(
+    channelId: string,
+    teamRunId: string,
+    opts?: { stuckAfterMs?: number; nowMs?: number },
+  ): Promise<TeamRunTimeline> {
+    const events = await this.readEvents(channelId, { limit: 500 });
+    return buildTeamRunTimeline(teamRunId, events, opts);
+  }
+
   /** Drive one subtask end to end, isolating any failure from its peers. */
   private async runSubtask(
     input: TeamRunInput,
@@ -338,54 +589,153 @@ export class TeamCoordinator {
     let visibilityDegraded = false;
     const lane = subtaskLaneSummary(subtask.task);
     const prepared = await this.prepareTask(input, subtask);
+    const maxAttempts = safeSubtaskAttempts(subtask);
+    const timeoutMs = safeSubtaskTimeoutMs(subtask);
     if (!prepared.ok) {
-      const delivered = await this.announce(input, subtask, "blocked", prepared.error);
+      const delivered = await this.announce(input, subtask, "blocked", prepared.error, {
+        attempt: 0,
+        maxAttempts,
+        error: prepared.error,
+      });
       return {
         subtaskId: subtask.subtaskId,
         sessionId: null,
         ok: false,
+        attempts: 0,
+        durationMs: null,
         error: prepared.error,
         visibilityDegraded: !delivered,
       };
     }
-    let delivered = await this.announce(input, subtask, "started", `started: ${lane}`);
-    visibilityDegraded = visibilityDegraded || !delivered;
-    try {
-      const { id } = await this.deps.launcher.launch({
-        workspaceId: input.workspaceId,
-        channelId: input.channelId,
-        agentMemberId: subtask.agentMemberId,
-        createdByMemberId: input.createdByMemberId,
-        task: prepared.task,
-        harness: subtask.preferredHarness,
-        teamRunId: input.teamRunId,
-        parentSpanId,
+    let lastSessionId: string | null = null;
+    let lastError: string | null = null;
+    let totalDurationMs = 0;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const startedMs = Date.now();
+      let sessionId: string | null = null;
+      let delivered = await this.announce(input, subtask, "started", "started: " + lane, {
+        attempt,
+        maxAttempts,
+        timeoutMs,
       });
-      await this.deps.launcher.join(id);
-      const missingProducedArtifacts = await this.missingProducedArtifacts(input, subtask);
-      if (missingProducedArtifacts.length > 0) {
-        const error =
-          "blocked: missing produced artifact: " + missingProducedArtifacts.map(artifactLabel).join(", ");
-        delivered = await this.announce(input, subtask, "blocked", error);
+      visibilityDegraded = visibilityDegraded || !delivered;
+      try {
+        const launched = await this.withTimeout(
+          this.deps.launcher.launch({
+            workspaceId: input.workspaceId,
+            channelId: input.channelId,
+            agentMemberId: subtask.agentMemberId,
+            createdByMemberId: input.createdByMemberId,
+            task: prepared.task,
+            harness: subtask.preferredHarness,
+            teamRunId: input.teamRunId,
+            parentSpanId,
+          }),
+          timeoutMs,
+        );
+        sessionId = launched.id;
+        lastSessionId = sessionId;
+        const remainingTimeoutMs = timeoutMs === null ? null : Math.max(1, timeoutMs - (Date.now() - startedMs));
+        await this.withTimeout(this.deps.launcher.join(sessionId), remainingTimeoutMs);
+        const missingProducedArtifacts = await this.missingProducedArtifacts(input, subtask);
+        if (missingProducedArtifacts.length > 0) {
+          throw new Error(
+            "blocked: missing produced artifact: " + missingProducedArtifacts.map(artifactLabel).join(", "),
+          );
+        }
+        const durationMs = Date.now() - startedMs;
+        totalDurationMs += durationMs;
+        delivered = await this.announce(input, subtask, "done", "done: " + lane, {
+          attempt,
+          maxAttempts,
+          sessionId,
+          durationMs,
+          producedArtifacts: uniqueArtifactKinds(subtask.producesArtifacts),
+        });
         visibilityDegraded = visibilityDegraded || !delivered;
-        return { subtaskId: subtask.subtaskId, sessionId: id, ok: false, error, visibilityDegraded };
+        return {
+          subtaskId: subtask.subtaskId,
+          sessionId,
+          ok: true,
+          attempts: attempt,
+          durationMs: totalDurationMs,
+          visibilityDegraded,
+        };
+      } catch (err) {
+        const durationMs = Date.now() - startedMs;
+        totalDurationMs += durationMs;
+        const error = err instanceof Error ? err.message : String(err);
+        lastError = error;
+        this.deps.logger.error({ err: error, subtaskId: subtask.subtaskId, attempt }, "team subtask failed");
+        if (/timed out after/i.test(error) && sessionId && this.deps.launcher.cancel) {
+          await this.deps.launcher.cancel(sessionId).catch((cancelErr) => {
+            this.deps.logger.warn(
+              { err: cancelErr instanceof Error ? cancelErr.message : String(cancelErr), subtaskId: subtask.subtaskId },
+              "team subtask timeout cancel failed",
+            );
+          });
+        }
+        if (attempt < maxAttempts) {
+          delivered = await this.announce(input, subtask, "milestone", "retrying: " + lane + " after " + error, {
+            attempt,
+            maxAttempts,
+            sessionId,
+            durationMs,
+            error,
+            nextAttempt: attempt + 1,
+          });
+          visibilityDegraded = visibilityDegraded || !delivered;
+          continue;
+        }
+        const blockedSummary = blockSummary(error);
+        delivered = await this.announce(input, subtask, "blocked", blockedSummary, {
+          attempt,
+          maxAttempts,
+          sessionId,
+          durationMs,
+          error,
+          final: true,
+        });
+        visibilityDegraded = visibilityDegraded || !delivered;
       }
-      delivered = await this.announce(input, subtask, "done", `done: ${lane}`);
-      visibilityDegraded = visibilityDegraded || !delivered;
-      return { subtaskId: subtask.subtaskId, sessionId: id, ok: true, visibilityDegraded };
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      this.deps.logger.error({ err: error, subtaskId: subtask.subtaskId }, "team subtask failed");
-      delivered = await this.announce(input, subtask, "blocked", `blocked: ${error}`);
-      visibilityDegraded = visibilityDegraded || !delivered;
-      return {
-        subtaskId: subtask.subtaskId,
-        sessionId: null,
-        ok: false,
-        error,
-        visibilityDegraded,
-      };
     }
+    return {
+      subtaskId: subtask.subtaskId,
+      sessionId: lastSessionId,
+      ok: false,
+      attempts: maxAttempts,
+      durationMs: totalDurationMs,
+      error: lastError ?? "unknown subtask failure",
+      visibilityDegraded,
+    };
+  }
+
+  private async withTimeout<T>(work: Promise<T>, timeoutMs: number | null): Promise<T> {
+    if (!timeoutMs) {
+      return work;
+    }
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error("timed out after " + timeoutMs + "ms"));
+      }, timeoutMs);
+      work.then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (err) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
+    });
   }
 
   private async prepareTask(
@@ -442,6 +792,7 @@ export class TeamCoordinator {
     subtask: Subtask,
     kind: TeamEventKind,
     summary: string,
+    detail?: Record<string, unknown>,
   ): Promise<boolean> {
     const event: TeamEvent = {
       teamRunId: input.teamRunId,
@@ -450,6 +801,7 @@ export class TeamCoordinator {
       kind,
       summary,
       branch: subtask.branch,
+      ...(detail ? { detail } : {}),
       createdAt: this.now(),
     };
     const flushed = await this.flushPending(input.channelId);

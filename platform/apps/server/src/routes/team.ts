@@ -35,12 +35,29 @@ interface SubtaskBody {
   branch?: string;
   harness?: string;
   phase?: number;
+  timeoutMs?: number;
+  maxAttempts?: number;
   producesArtifacts?: unknown;
   requiresArtifacts?: unknown;
 }
 
 function parseSubtaskPhase(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+const DEFAULT_TEAM_SUBTASK_TIMEOUT_MS = 30 * 60 * 1000;
+const MAX_TEAM_SUBTASK_TIMEOUT_MS = 60 * 60 * 1000;
+const DEFAULT_TEAM_SUBTASK_MAX_ATTEMPTS = 2;
+const MAX_TEAM_SUBTASK_ATTEMPTS = 3;
+
+function parseSubtaskTimeoutMs(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_TEAM_SUBTASK_TIMEOUT_MS;
+  return Math.max(1, Math.min(Math.floor(value), MAX_TEAM_SUBTASK_TIMEOUT_MS));
+}
+
+function parseSubtaskMaxAttempts(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return DEFAULT_TEAM_SUBTASK_MAX_ATTEMPTS;
+  return Math.max(1, Math.min(value, MAX_TEAM_SUBTASK_ATTEMPTS));
 }
 
 const TEAM_ARTIFACT_KINDS: readonly TeamArtifactKind[] = ["scout_research", "brand_voice", "draft_set", "lens_review"];
@@ -114,12 +131,16 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         return reply.code(400).send({ error: "subtask.agentMemberId must reference an agent member" });
       }
       const phase = parseSubtaskPhase(s.phase);
+      const timeoutMs = parseSubtaskTimeoutMs(s.timeoutMs);
+      const maxAttempts = parseSubtaskMaxAttempts(s.maxAttempts);
       subtasks.push({
         subtaskId: newId(),
         agentMemberId: target.id,
         task: s.task,
         branch: s.branch,
         ...(phase ? { phase } : {}),
+        timeoutMs,
+        maxAttempts,
         ...(producesArtifacts.length > 0 ? { producesArtifacts } : {}),
         ...(requiresArtifacts.length > 0 ? { requiresArtifacts } : {}),
         preferredHarness: isHarnessKind(s.harness) ? s.harness : undefined,
@@ -186,6 +207,8 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         agentMemberId: s.agentMemberId,
         branch: s.branch,
         phase: s.phase ?? 1,
+        timeoutMs: s.timeoutMs ?? DEFAULT_TEAM_SUBTASK_TIMEOUT_MS,
+        maxAttempts: s.maxAttempts ?? DEFAULT_TEAM_SUBTASK_MAX_ATTEMPTS,
         producesArtifacts: s.producesArtifacts ?? [],
         requiresArtifacts: s.requiresArtifacts ?? [],
         harness: s.preferredHarness ?? null,
@@ -203,6 +226,16 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
     const n = limit ? Number(limit) : undefined;
     const opts = n && Number.isFinite(n) && n > 0 ? { limit: n } : undefined;
     return coordinator.readEvents(cid, opts);
+  });
+
+  app.get("/channels/:cid/team-runs/:teamRunId/timeline", async (req, reply) => {
+    const id = await requireIdentity(req, reply);
+    if (!id) return;
+    const { cid, teamRunId } = req.params as { cid: string; teamRunId: string };
+    if (!(await requireChannelCapability(id, cid, "read", reply))) return;
+    const timeline = await coordinator.timeline(cid, teamRunId);
+    if (timeline.subtaskCount === 0) return reply.code(404).send({ error: "team run not found" });
+    return timeline;
   });
 }
 

@@ -890,6 +890,131 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(blocked[0]?.subtaskId).toBe("sub_1");
   });
 
+  it("retries a failed subtask once when the route opts it into two attempts (#1545)", async () => {
+    const launched: LaunchInput[] = [];
+    const launcher: TeamLauncher = {
+      async launch(input) {
+        launched.push(input);
+        return { id: "s" + launched.length };
+      },
+      async join(id) {
+        if (id === "s1") throw new Error("transient runner failure");
+      },
+    };
+    const { channel, events } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => new Date(Date.UTC(2026, 5, 8, 0, 0, events().length)).toISOString(),
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [{ ...subtasks(1)[0]!, maxAttempts: 2 }],
+    });
+    const timeline = await coordinator.timeline("ch_1", "run_1");
+
+    expect(launched).toHaveLength(2);
+    expect(result.results[0]).toMatchObject({ ok: true, attempts: 2, sessionId: "s2" });
+    expect(events().some((event) => event.kind === "milestone" && event.summary.includes("retrying"))).toBe(true);
+    expect(timeline.subtasks[0]).toMatchObject({
+      subtaskId: "sub_0",
+      state: "done",
+      attempts: 2,
+      sessionIds: ["s1", "s2"],
+    });
+  });
+
+  it("cancels and blocks a timed-out subtask with an owner-readable reason (#1545)", async () => {
+    const canceled: string[] = [];
+    const launcher: TeamLauncher = {
+      async launch() {
+        return { id: "stuck" };
+      },
+      async join() {
+        await new Promise(() => {});
+      },
+      async cancel(id) {
+        canceled.push(id);
+        return true;
+      },
+    };
+    const { channel } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [{ ...subtasks(1)[0]!, timeoutMs: 5, maxAttempts: 1 }],
+    });
+    const timeline = await coordinator.timeline("ch_1", "run_1");
+
+    expect(canceled).toEqual(["stuck"]);
+    expect(result.results[0]?.ok).toBe(false);
+    expect(result.results[0]?.error).toContain("timed out after 5ms");
+    expect(timeline.subtasks[0]).toMatchObject({
+      state: "failed",
+      reason: "timed out after 5ms",
+      sessionIds: ["stuck"],
+    });
+  });
+
+  it("reconstructs a run timeline with queued inputs, artifacts, duration, and dead-run alerts (#1545)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft channel-native assets",
+          branch: "b-quill",
+          producesArtifacts: ["draft_set"],
+        },
+      ],
+    });
+
+    const timeline = await coordinator.timeline("ch_1", "run_1", {
+      nowMs: Date.parse("2026-06-08T02:00:00.000Z"),
+      stuckAfterMs: 60 * 60 * 1000,
+    });
+
+    expect(timeline.state).toBe("failed");
+    expect(timeline.counts.failed).toBe(1);
+    expect(timeline.subtasks[0]).toMatchObject({
+      subtaskId: "quill",
+      state: "failed",
+      input: {
+        task: "draft channel-native assets",
+        producesArtifacts: ["draft_set"],
+      },
+      attempts: 1,
+    });
+    expect(timeline.alerts).toEqual([
+      expect.objectContaining({
+        kind: "dead_run",
+        subtaskId: "quill",
+        pageOwner: true,
+      }),
+    ]);
+  });
+
   it("threads teamRunId + parentSpanId into each launch (observability linkage)", async () => {
     const launcher = new FakeLauncher();
     const { channel } = makeChannel();
@@ -1043,6 +1168,6 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(result.visibilityDegraded).toBe(true);
     expect(result.results[0]?.visibilityDegraded).toBe(true);
     const seen = await coordinator.readEvents("ch_1");
-    expect(seen.map((e) => e.kind)).toEqual(["started", "done"]);
+    expect(seen.map((e) => e.kind)).toEqual(["queued", "started", "done"]);
   });
 });
