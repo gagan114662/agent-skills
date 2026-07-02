@@ -67,10 +67,11 @@ describe("LiveEverydayShell (#1181)", () => {
   beforeEach(() => {
     vi.spyOn(api, "getFirstRunReceipt").mockResolvedValue({ firstRun: null });
     vi.spyOn(api, "recordFirstRunReceipt").mockResolvedValue({ firstRun: null });
-    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+    vi.spyOn(api, "getRuntimeStatus").mockResolvedValue({
+      provider: "claude",
       connected: true,
       reason: "",
-      selectedHarness: "codex",
+      selectedHarness: "claude-code",
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "signed_in_subscription",
@@ -206,15 +207,16 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.getByText(EVERYDAY.approvals.empty)).toBeInTheDocument();
     expect(screen.getByText(EVERYDAY.transparency.empty)).toBeInTheDocument();
     expect(screen.getAllByText("$0").length).toBeGreaterThan(0);
-    expect(await screen.findByText("signed-in team engine is connected")).toBeInTheDocument();
+    expect(await screen.findByText("agent runtime is connected (claude)")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText(/Northwind/i)).not.toBeInTheDocument());
   });
 
-  it("surfaces missing Codex subscription auth in the live readiness dashboard", async () => {
-    vi.mocked(api.getCodexStatus).mockResolvedValue({
+  it("surfaces a disconnected agent runtime in the live readiness dashboard", async () => {
+    vi.mocked(api.getRuntimeStatus).mockResolvedValue({
+      provider: "claude",
       connected: false,
-      reason: "Codex subscription auth is not connected for this workspace yet.",
-      selectedHarness: "codex",
+      reason: "Claude is not connected for this workspace yet.",
+      selectedHarness: "claude-code",
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "missing",
@@ -228,7 +230,7 @@ describe("LiveEverydayShell (#1181)", () => {
     });
 
     expect(
-      await screen.findByText("Codex subscription auth is not connected for this workspace yet."),
+      await screen.findByText("Claude is not connected for this workspace yet."),
     ).toBeInTheDocument();
     expect(screen.getByText("Sign-in").closest("li")).toHaveAttribute("data-status", "blocked");
   });
@@ -733,10 +735,11 @@ describe("LiveEverydayShell (#1181)", () => {
       connections: [],
       canManageInternal: false,
     });
-    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+    vi.spyOn(api, "getRuntimeStatus").mockResolvedValue({
+      provider: "claude",
       connected: false,
       reason: "The team engine is not connected for this session.",
-      selectedHarness: "codex",
+      selectedHarness: "claude-code",
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "missing",
@@ -765,7 +768,7 @@ describe("LiveEverydayShell (#1181)", () => {
 
     expect(
       await screen.findByText(
-        "The team engine is not connected to your signed-in subscription yet. Connect it before starting the agent room.",
+        "The agent runtime is not connected for this workspace yet. The team engine is not connected for this session.",
       ),
     ).toBeInTheDocument();
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith("c1", "build ipop.ai"));
@@ -778,10 +781,11 @@ describe("LiveEverydayShell (#1181)", () => {
       connections: [],
       canManageInternal: false,
     });
-    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+    vi.spyOn(api, "getRuntimeStatus").mockResolvedValue({
+      provider: "claude",
       connected: true,
       reason: "",
-      selectedHarness: "codex",
+      selectedHarness: "claude-code",
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "signed_in_subscription",
@@ -829,10 +833,11 @@ describe("LiveEverydayShell (#1181)", () => {
       connections: [],
       canManageInternal: false,
     });
-    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+    vi.spyOn(api, "getRuntimeStatus").mockResolvedValue({
+      provider: "claude",
       connected: true,
       reason: "",
-      selectedHarness: "codex",
+      selectedHarness: "claude-code",
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "signed_in_subscription",
@@ -873,15 +878,16 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.queryByText("iMessage relay is still in dry-run mode; no real Messages room was started.")).not.toBeInTheDocument();
   });
 
-  it("launches every room agent with the shared prompt structure and a Codex operator packet (#1265)", async () => {
+  it("launches every room agent with the shared prompt structure and an operator packet (#1265/#1568)", async () => {
     vi.spyOn(api, "getConnections").mockResolvedValue({
       connections: [],
       canManageInternal: false,
     });
-    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+    vi.spyOn(api, "getRuntimeStatus").mockResolvedValue({
+      provider: "claude",
       connected: true,
       reason: "",
-      selectedHarness: "codex",
+      selectedHarness: "claude-code",
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "signed_in_subscription",
@@ -917,7 +923,7 @@ describe("LiveEverydayShell (#1181)", () => {
     const [channelId, subtasks] = launchTeamRun.mock.calls[0]!;
     expect(channelId).toBe("c1");
     expect(subtasks).toHaveLength(5);
-    expect(subtasks.every((subtask) => subtask.harness === "codex")).toBe(true);
+    expect(subtasks.every((subtask) => subtask.harness === "claude-code")).toBe(true);
     const quill = subtasks.find((subtask) => subtask.branch.startsWith("ipop-quill-"));
     const echo = subtasks.find((subtask) => subtask.branch.startsWith("ipop-echo-"));
     const lens = subtasks.find((subtask) => subtask.branch.startsWith("ipop-lens-"));
@@ -954,7 +960,7 @@ describe("LiveEverydayShell (#1181)", () => {
       expect(subtask.task).toContain("Do real marketing work");
       expect(subtask.task).toContain("Do not send, publish, spend");
     }
-    const operator = subtasks.find((subtask) => subtask.branch.startsWith("ipop-codex-"));
+    const operator = subtasks.find((subtask) => subtask.branch.startsWith("ipop-operator-"));
     expect(operator?.task).toContain("codex_work_packet");
     expect(operator?.task).toContain("audit_label: codex_operator_lane");
     expect(operator?.task).toContain("credential_boundary");
@@ -972,10 +978,11 @@ describe("LiveEverydayShell (#1181)", () => {
       connections: [],
       canManageInternal: false,
     });
-    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+    vi.spyOn(api, "getRuntimeStatus").mockResolvedValue({
+      provider: "claude",
       connected: true,
       reason: "",
-      selectedHarness: "codex",
+      selectedHarness: "claude-code",
       userAuthenticated: true,
       workspaceAuthenticated: true,
       runtimeAuth: "signed_in_subscription",

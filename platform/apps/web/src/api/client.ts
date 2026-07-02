@@ -106,6 +106,7 @@ import type {
   TeamRunTimeline,
   TeamRunSubtaskInput,
   CodexSubscriptionStatus,
+  RuntimeStatus,
   ThreadView,
   UsageReport,
 } from "./types.js";
@@ -776,6 +777,11 @@ export const api = {
   getTeamRunTimeline(channelId: string, teamRunId: string): Promise<TeamRunTimeline> {
     return request<TeamRunTimeline>(`/channels/${channelId}/team-runs/${teamRunId}/timeline`);
   },
+  /** Provider-agnostic runtime readiness (#1568): Claude by default, Codex when the server opts back. */
+  getRuntimeStatus(): Promise<RuntimeStatus> {
+    return request<RuntimeStatus>("/me/runtime/status");
+  },
+  /** Legacy path (#1282) — the server now serves the same provider-agnostic status here. */
   getCodexStatus(): Promise<CodexSubscriptionStatus> {
     return request<CodexSubscriptionStatus>("/me/codex/status");
   },

@@ -3,7 +3,7 @@ import type { ApprovalRequestDto, TeamEvent, MarketingDraft } from "@reload/shar
 import { api } from "../../api/client.js";
 import type {
   ConnectionView,
-  CodexSubscriptionStatus,
+  RuntimeStatus,
   FirstRunReceiptDto,
   FirstRunReceiptInput,
   IMessageStatusResponse,
@@ -415,17 +415,17 @@ function withFirstRunReceipt(
   };
 }
 
-function withCodexReadiness(
+function withRuntimeReadiness(
   data: EverydayData,
-  codexStatus: CodexSubscriptionStatus | null,
+  runtimeStatus: RuntimeStatus | null,
 ): EverydayData {
-  if (!codexStatus || !data.marketingBrief) return data;
+  if (!runtimeStatus || !data.marketingBrief) return data;
   const auth: LaunchReadinessItem = {
     label: "auth",
-    status: codexStatus.connected ? "ready" : "blocked",
-    proof: codexStatus.connected
-      ? "signed-in team engine is connected"
-      : codexStatus.reason,
+    status: runtimeStatus.connected ? "ready" : "blocked",
+    proof: runtimeStatus.connected
+      ? "agent runtime is connected (" + runtimeStatus.provider + ")"
+      : runtimeStatus.reason,
   };
   return {
     ...data,
@@ -510,7 +510,7 @@ export function withLiveRoomSessions(data: EverydayData, state: AppState): Every
 export function liveEverydayDataFromState(
   state: AppState,
   firstRun: FirstRunReceiptDto | null = null,
-  codexStatus: CodexSubscriptionStatus | null = null,
+  runtimeStatus: RuntimeStatus | null = null,
 ): EverydayData {
   const data = emptyEverydayData(state.identity?.displayName ?? "there");
   const liveData = withLiveRoomSessions(
@@ -524,7 +524,7 @@ export function liveEverydayDataFromState(
     },
     state,
   );
-  return withCodexReadiness(withFirstRunReceipt(liveData, firstRun), codexStatus);
+  return withRuntimeReadiness(withFirstRunReceipt(liveData, firstRun), runtimeStatus);
 }
 
 function groupForConnection(connection: ConnectionView): EverydayConnector["group"] {
@@ -593,7 +593,7 @@ function connectorFromConnection(
   };
 }
 
-type RoomAgentRole = "Scout" | "Quill" | "Echo" | "Lens" | "Codex";
+type RoomAgentRole = "Scout" | "Quill" | "Echo" | "Lens" | "Operator";
 
 interface RoomAgentSpec {
   readonly role: RoomAgentRole;
@@ -673,7 +673,9 @@ const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
     ],
   },
   {
-    role: "Codex",
+    // Provider-neutral implementation-operator lane (#1568). The lane id + receipt strings keep the
+    // historical `codex_operator_lane` label because persisted audit receipts key off it.
+    role: "Operator",
     lane: "codex_operator_lane",
     phase: 5,
     requiresArtifacts: ["lens_review"],
@@ -745,11 +747,11 @@ function structuredRoomTask(spec: RoomAgentSpec, goal: string): string {
   ];
 
   const rendered = baseSections.map(([heading, body]) => heading + "\n" + body).join("\n\n");
-  if (spec.role !== "Codex") return rendered;
+  if (spec.role !== "Operator") return rendered;
   return (
     "codex_work_packet\n" +
     "audit_label: codex_operator_lane\n" +
-    "credential_boundary: use the signed-in Codex runtime only; do not request or store API keys, cookies, passwords, or browser session secrets.\n\n" +
+    "credential_boundary: use the workspace's connected agent runtime only; do not request or store API keys, cookies, passwords, or browser session secrets.\n\n" +
     rendered +
     "\n\nReturn payload schema:\n" +
     "- summary\n" +
@@ -762,7 +764,7 @@ function structuredRoomTask(spec: RoomAgentSpec, goal: string): string {
 }
 
 function codexOperatorPacket(goal: string): string {
-  const spec = ROOM_AGENT_TASKS.find((item) => item.role === "Codex");
+  const spec = ROOM_AGENT_TASKS.find((item) => item.role === "Operator");
   if (!spec) return "";
   return structuredRoomTask(spec, goal);
 }
@@ -795,7 +797,7 @@ async function resolveAgentMemberId(state: AppState, role: string): Promise<stri
   return cached?.id ?? null;
 }
 
-async function launchCodexRoomRun(
+async function launchTeamRoomRun(
   state: AppState,
   goal: string,
 ): Promise<EverydayRoomLaunchResult> {
@@ -806,10 +808,13 @@ async function launchCodexRoomRun(
   if (workspaceId) {
     await api.department.seed(workspaceId, { welcomeTasks: false }).catch(() => undefined);
   }
-  const codex = await api.getCodexStatus();
-  if (!codex.connected) {
+  // #1568: provider-agnostic readiness — the server says which runtime (Claude by default) will
+  // execute the run and whether it is connected; every subtask targets THAT harness, never a
+  // hardcoded vendor.
+  const runtime = await api.getRuntimeStatus();
+  if (!runtime.connected) {
     throw new Error(
-      "The team engine is not connected to your signed-in subscription yet. Connect it before starting the agent room.",
+      "The agent runtime is not connected for this workspace yet. " + runtime.reason,
     );
   }
 
@@ -824,7 +829,7 @@ async function launchCodexRoomRun(
       phase: spec.phase,
       ...(spec.producesArtifacts ? { producesArtifacts: [...spec.producesArtifacts] } : {}),
       ...(spec.requiresArtifacts ? { requiresArtifacts: [...spec.requiresArtifacts] } : {}),
-      harness: "codex",
+      harness: runtime.selectedHarness,
     });
   }
   if (subtasks.length === 0) {
@@ -899,7 +904,7 @@ export function LiveEverydayShell({
   const [connections, setConnections] = useState<readonly ConnectionView[] | null>(null);
   const [imessageStatus, setIMessageStatus] = useState<IMessageStatusResponse | null>(null);
   const [firstRun, setFirstRun] = useState<FirstRunReceiptDto | null>(null);
-  const [codexStatus, setCodexStatus] = useState<CodexSubscriptionStatus | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const [fleetPaused, setFleetPaused] = useState(false);
 
   useEffect(() => {
@@ -937,8 +942,8 @@ export function LiveEverydayShell({
     setFirstRun(response.firstRun);
   }
 
-  async function refreshCodexStatus(): Promise<void> {
-    setCodexStatus(await api.getCodexStatus());
+  async function refreshRuntimeStatus(): Promise<void> {
+    setRuntimeStatus(await api.getRuntimeStatus());
   }
 
   useEffect(() => {
@@ -950,7 +955,7 @@ export function LiveEverydayShell({
     void refreshConnections().catch(() => setConnections(null));
     void refreshIMessageStatus().catch(() => setIMessageStatus(null));
     void refreshFirstRun().catch(() => setFirstRun(null));
-    void refreshCodexStatus().catch(() => setCodexStatus(null));
+    void refreshRuntimeStatus().catch(() => setRuntimeStatus(null));
     // NOTE: state.approvals.status is read as a boot-time guard, not subscribed to — this effect stays keyed on
     // workspace/phase (realtime + the console view own live approval-filter changes), matching the sibling calls.
   }, [state.phase, state.identity?.workspaceId, store]);
@@ -1002,7 +1007,7 @@ export function LiveEverydayShell({
     return { outcome: "connected" };
   }
 
-  const data = liveEverydayDataFromState(state, firstRun, codexStatus);
+  const data = liveEverydayDataFromState(state, firstRun, runtimeStatus);
   const showCmoSummary = shouldShowCmoSummary({
     flagOn: CMO_SUMMARY_ENABLED,
     ownerWorkspaceId: CMO_SUMMARY_OWNER_WORKSPACE_ID,
@@ -1035,7 +1040,7 @@ export function LiveEverydayShell({
         await refreshIMessageStatus();
       }}
       onStartRoom={async (goal) => {
-        const result = await launchCodexRoomRun(state, goal);
+        const result = await launchTeamRoomRun(state, goal);
         if (state.activeChannelId) await store.refreshChannelMessages(state.activeChannelId);
         return result;
       }}
