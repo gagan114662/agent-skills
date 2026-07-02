@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { OnboardingExperience } from "./OnboardingExperience.js";
 import { SUPPORT_CONTACT } from "../../brand.js";
-import { ipopExperienceTokens } from "../../design/ipop-experience-tokens.js";
+import { IPOP_PUBLIC_THEME } from "../../design/public-theme.js";
 import { APP_ROUTES } from "../../routing.js";
 import { FIRST_RUN_RECEIPT_KEY } from "./first-run-receipt.js";
 import { TELEGRAM_BOT_URL, WHATSAPP_URL } from "./messaging-entry.js";
@@ -137,11 +137,9 @@ describe("OnboardingExperience (#784)", () => {
 
     expect(root).not.toBeNull();
     expect(root).toHaveStyle({
-      "--o-canvas": ipopExperienceTokens.color.canvas,
-      "--o-surface": ipopExperienceTokens.color.surface,
-      "--o-pop": ipopExperienceTokens.color.accent,
-      "--o-serif": ipopExperienceTokens.typography.serif,
-      "--o-sans": ipopExperienceTokens.typography.sans,
+      "--o-canvas": IPOP_PUBLIC_THEME.bg,
+      "--o-raised": IPOP_PUBLIC_THEME.surface,
+      "--o-pop": IPOP_PUBLIC_THEME.accent,
     });
   });
 

@@ -17,6 +17,7 @@ import { PopMark } from "./PopMark.js";
 import { OnboardingExperience } from "./onboarding/OnboardingExperience.js";
 import { SampleConsole } from "./SampleConsole.js";
 import { isMarketingPath } from "./site/paths.js";
+import { usePublicLightTheme } from "../design/public-theme.js";
 
 type Mode = "login" | "signup";
 type AuthError =
@@ -117,6 +118,22 @@ function isBlogPath(path: string): boolean {
 const RETURN_KEY = "return";
 const MESSAGING_RETURN_PATH = APP_ROUTES.everyday;
 
+function isPublicLightAuthRoute(path: string, phase: ReturnType<typeof useAppState>["phase"]): boolean {
+  if (path === APP_ROUTES.everyday) return phase !== "ready";
+  return (
+    path === "/start" ||
+    path === "/pricing" ||
+    path === COMPANY.href ||
+    path === LEGAL.terms.href ||
+    path === LEGAL.privacy.href ||
+    path === LEGAL.dpa.href ||
+    path === "/security" ||
+    path === "/refund-policy" ||
+    isMarketingPath(path) ||
+    isBlogPath(path)
+  );
+}
+
 const AUTH_CHANNELS = [
   { key: "imessage", label: "iMessage", detail: "finish relay setup" },
   { key: "whatsapp", label: "WhatsApp", detail: "sync the team thread" },
@@ -143,6 +160,7 @@ export function AuthGate({
   const store = useStore();
   const { phase } = useAppState();
   const path = useRoute();
+  usePublicLightTheme(isPublicLightAuthRoute(path, phase));
 
   useEffect(() => {
     void store.bootstrap();

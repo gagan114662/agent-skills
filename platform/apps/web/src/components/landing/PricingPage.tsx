@@ -18,6 +18,7 @@ import { useState } from "react";
 import { LaunchReadiness } from "./LaunchReadiness.js";
 import { PublicDoorFooter, PublicDoorNav } from "../onboarding/PublicDoorNav.js";
 import { TELEGRAM_BOT_URL } from "../onboarding/messaging-entry.js";
+import { publicThemeStyle } from "../../design/public-theme.js";
 
 type BillingInterval = "month" | "year";
 
@@ -34,7 +35,7 @@ export function PricingPage(): React.JSX.Element {
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
   const isAnnual = billingInterval === "year";
   return (
-    <div className="pricing-page">
+    <div className="pricing-page public-surface" style={publicThemeStyle(["o"])}>
       <PublicDoorNav className="pricing-page__nav" startHref={TELEGRAM_BOT_URL} />
 
       <main>

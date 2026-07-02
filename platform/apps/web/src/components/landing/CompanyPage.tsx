@@ -4,13 +4,14 @@
  */
 import { COMPANY } from "../../brand.js";
 import { Link } from "../../routing.js";
+import { publicThemeStyle } from "../../design/public-theme.js";
 import { PublicDoorNav } from "../onboarding/PublicDoorNav.js";
 import { TELEGRAM_BOT_URL } from "../onboarding/messaging-entry.js";
 import { Wordmark } from "../Wordmark.js";
 
 export function CompanyPage(): React.JSX.Element {
   return (
-    <div className="landing landing--security">
+    <div className="landing landing--security public-surface" style={publicThemeStyle(["o"])}>
       <PublicDoorNav className="landing__nav" startHref={TELEGRAM_BOT_URL} />
 
       <main>

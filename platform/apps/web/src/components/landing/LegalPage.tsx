@@ -2,8 +2,11 @@
  * Public company-level legal pages (#863). These are static, unauthenticated product pages, separate from
  * the workspace-scoped generated legal docs in the backend.
  */
-import { BRAND, LEGAL } from "../../brand.js";
+import { LEGAL } from "../../brand.js";
 import { Link } from "../../routing.js";
+import { publicThemeStyle } from "../../design/public-theme.js";
+import { PublicDoorNav } from "../onboarding/PublicDoorNav.js";
+import { TELEGRAM_BOT_URL } from "../onboarding/messaging-entry.js";
 import { Wordmark } from "../Wordmark.js";
 
 export type LegalPageKind = "terms" | "privacy" | "dpa";
@@ -11,20 +14,8 @@ export type LegalPageKind = "terms" | "privacy" | "dpa";
 export function LegalPage({ kind }: { kind: LegalPageKind }): React.JSX.Element {
   const copy = LEGAL[kind];
   return (
-    <div className="landing landing--security">
-      <header className="landing__nav">
-        <Link href="/" className="landing__brand" aria-label={BRAND.name}>
-          <Wordmark />
-        </Link>
-        <nav className="landing__nav-actions">
-          <Link href="/security" className="linklike">
-            {LEGAL.securityCta}
-          </Link>
-          <Link href="/" className="btn btn--primary landing__nav-cta">
-            {LEGAL.backCta}
-          </Link>
-        </nav>
-      </header>
+    <div className="landing landing--security public-surface" style={publicThemeStyle(["o"])}>
+      <PublicDoorNav className="landing__nav" startHref={TELEGRAM_BOT_URL} />
 
       <main>
         <section className="landing__hero landing__security-hero" aria-labelledby={`${kind}-title`}>
@@ -55,6 +46,9 @@ export function LegalPage({ kind }: { kind: LegalPageKind }): React.JSX.Element 
 
       <footer className="landing__footer">
         <div className="landing__footer-bottom">
+          <Link href="/security" className="linklike landing__footer-link">
+            {LEGAL.securityCta}
+          </Link>
           <Link href={LEGAL.terms.href} className="linklike landing__footer-link">
             {LEGAL.terms.navLabel}
           </Link>

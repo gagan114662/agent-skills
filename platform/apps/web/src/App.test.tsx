@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App.js";
 import { createStore } from "./store/store.js";
 import { StoreProvider } from "./store/StoreContext.js";
@@ -7,6 +7,7 @@ import { fakeRealtime, makeFakeDeps } from "./test/utils.js";
 import { APP_ROUTES, navigate } from "./routing.js";
 import { TELEGRAM_BOT_URL } from "./components/onboarding/messaging-entry.js";
 import { PRICING } from "./brand.js";
+import { IPOP_PUBLIC_THEME } from "./design/public-theme.js";
 
 const unauthorized = () => {
   throw Object.assign(new Error("unauthorized"), { status: 401 });
@@ -16,7 +17,21 @@ afterEach(() => {
   vi.restoreAllMocks();
   window.sessionStorage.clear();
   window.history.pushState({}, "", "/");
+  document.documentElement.removeAttribute("data-theme");
+  document.documentElement.removeAttribute("data-public-surface");
+  document.body.removeAttribute("data-public-surface");
+  document.body.style.backgroundColor = "";
+  document.body.style.color = "";
 });
+
+const DARK_BODY_RGB = "rgb(13, 13, 17)";
+const PUBLIC_BODY_RGB = "rgb(246, 241, 231)";
+
+function forceDarkDocument(): void {
+  document.documentElement.setAttribute("data-theme", "reload-dark");
+  document.body.style.backgroundColor = DARK_BODY_RGB;
+  document.body.style.color = "rgb(243, 243, 246)";
+}
 
 describe("App root routing", () => {
   it("shows the public onboarding door at / for logged-out visitors", async () => {
@@ -128,6 +143,42 @@ describe("App root routing", () => {
     expect(await screen.findByRole("heading", { name: PRICING.title })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "homepage actions" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Page not found" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { path: "/demo", selector: ".demo" },
+    { path: "/pricing", selector: ".pricing-page" },
+    { path: "/company", selector: ".landing" },
+    { path: "/terms", selector: ".landing" },
+    { path: "/privacy", selector: ".landing" },
+    { path: "/everyday", selector: ".onboard" },
+  ])("keeps $path on the homepage light background token (#1532)", async ({ path, selector }) => {
+    await act(async () => {
+      navigate(path);
+    });
+    forceDarkDocument();
+    const { deps } = makeFakeDeps({ me: unauthorized });
+    const store = createStore({ api: deps.api, realtime: fakeRealtime() });
+
+    render(
+      <StoreProvider store={store}>
+        <App />
+      </StoreProvider>,
+    );
+
+    await waitFor(() => {
+      expect(document.body).toHaveAttribute("data-public-surface", "light");
+      expect(getComputedStyle(document.body).backgroundColor).toBe(PUBLIC_BODY_RGB);
+    });
+    expect(getComputedStyle(document.body).backgroundColor).not.toBe(DARK_BODY_RGB);
+
+    await waitFor(() => {
+      const root = document.querySelector<HTMLElement>(selector);
+      expect(root).not.toBeNull();
+      expect(getComputedStyle(root!).backgroundColor).toBe(PUBLIC_BODY_RGB);
+      expect(getComputedStyle(root!).backgroundColor).not.toBe(DARK_BODY_RGB);
+    });
+    expect(IPOP_PUBLIC_THEME.bg).toBe("#f6f1e7");
   });
 
   it("opens direct /start as the public homepage flow instead of the branded 404 (#1482)", async () => {
