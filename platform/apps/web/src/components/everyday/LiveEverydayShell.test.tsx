@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ApprovalRequestDto } from "@reload/shared";
+import type { ConnectionView } from "../../api/types.js";
 import {
   LiveEverydayShell,
   liveEverydayDataFromState,
@@ -33,6 +34,33 @@ function approval(over: Partial<ApprovalRequestDto> = {}): ApprovalRequestDto {
     updatedAt: "2026-06-25T10:00:00.000Z",
     ...over,
   };
+}
+
+function customerConnection(over: Partial<ConnectionView> = {}): ConnectionView {
+  return {
+    id: "email",
+    label: "Email",
+    summary: "email, replies, and follow-up receipts.",
+    provider: "email",
+    kind: "email",
+    audience: "customer",
+    auth: "one_click",
+    status: "available",
+    statusReason: null,
+    capabilities: ["send_email"],
+    oauthScopes: [],
+    consentStatus: "none",
+    providerStatus: "unproven",
+    lastProofAt: null,
+    lastProofReceipt: null,
+    failureReason: null,
+    connected: false,
+    ...over,
+  };
+}
+
+function connectorsRegion(): HTMLElement {
+  return screen.getByRole("region", { name: EVERYDAY.connectors.heading });
 }
 
 describe("LiveEverydayShell (#1181)", () => {
@@ -272,6 +300,126 @@ describe("LiveEverydayShell (#1181)", () => {
         value: originalLocation,
       });
     }
+  });
+
+  it("hands a consumer-OAuth connector off to the provider authorize screen (#1551)", async () => {
+    const originalLocation = window.location;
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign },
+    });
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        customerConnection({
+          id: "x",
+          label: "X",
+          provider: "x",
+          kind: "social",
+          auth: "oauth",
+          capabilities: ["post_social"],
+          summary: "research public threads and draft owner-approved replies.",
+        }),
+      ],
+      canManageInternal: false,
+    });
+    const startOAuth = vi.spyOn(api, "startConnectionOAuth").mockResolvedValue({
+      status: "pending_approval",
+      requestId: "req-x",
+      authorizePath: "/me/connections/x/oauth/authorize",
+      provider: "x",
+      scopes: ["post_social"],
+      message: "Consent recorded.",
+    });
+
+    try {
+      const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+      await act(async () => {
+        await store.bootstrap();
+      });
+
+      expect(await screen.findByText("X")).toBeInTheDocument();
+      fireEvent.click(within(connectorsRegion()).getByRole("button", { name: "connect" }));
+
+      await waitFor(() => expect(assign).toHaveBeenCalledWith("/me/connections/x/oauth/authorize"));
+      expect(startOAuth).toHaveBeenCalledWith("x");
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
+  });
+
+  it("turns on a one-click channel and shows visible feedback (#1551)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [customerConnection()],
+      canManageInternal: false,
+    });
+    const enableConnection = vi.spyOn(api, "enableConnection").mockResolvedValue({
+      connections: [customerConnection({ connected: true, providerStatus: "healthy" })],
+      canManageInternal: false,
+    });
+
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    fireEvent.click(within(connectorsRegion()).getByRole("button", { name: "connect" }));
+
+    await waitFor(() => expect(enableConnection).toHaveBeenCalledWith("email"));
+    expect(await within(connectorsRegion()).findByRole("status")).toBeInTheDocument();
+  });
+
+  it("records interest for a not-live connector instead of dying silently (#1551)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [
+        customerConnection({
+          id: "linkedin",
+          label: "LinkedIn",
+          provider: "linkedin",
+          auth: "oauth",
+          status: "coming_soon",
+          capabilities: ["post_social"],
+          summary: "native LinkedIn posting is not live yet.",
+        }),
+      ],
+      canManageInternal: false,
+    });
+    const waitlist = vi.spyOn(api, "joinConnectionWaitlist").mockResolvedValue(undefined);
+
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    fireEvent.click(within(connectorsRegion()).getByRole("button", { name: "notify me" }));
+
+    await waitFor(() => expect(waitlist).toHaveBeenCalledWith("linkedin"));
+    expect(await within(connectorsRegion()).findByRole("status")).toBeInTheDocument();
+  });
+
+  it("still fires a real connect call from the fallback catalog when connections fail to load (#1551)", async () => {
+    vi.spyOn(api, "getConnections").mockRejectedValue(new Error("offline"));
+    const enableConnection = vi.spyOn(api, "enableConnection").mockResolvedValue({
+      connections: [],
+      canManageInternal: false,
+    });
+
+    const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    // The default catalog is shown when the live connections list is unavailable; its buttons must not no-op.
+    const emailButton = within(connectorsRegion())
+      .getAllByRole("button", { name: "connect" })
+      .find((button) => button.closest(".everyday-connector")?.textContent?.includes("Email"));
+    expect(emailButton).toBeDefined();
+    fireEvent.click(emailButton!);
+
+    await waitFor(() => expect(enableConnection).toHaveBeenCalledWith("email"));
   });
 
   it("surfaces Mac relay heartbeat plus outbound and inbound iMessage proof (#1341)", async () => {

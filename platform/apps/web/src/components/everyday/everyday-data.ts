@@ -38,6 +38,24 @@ export interface EverydayConnector {
   readonly actionLabel: string;
 }
 
+/**
+ * What a connector "connect" click actually did (#1551). The shell uses this to give every click honest,
+ * visible feedback instead of a silent no-op: `redirecting` means the page is handing off to an OAuth/setup
+ * screen, `connected`/`pending` mean a one-click channel turned on, `waitlisted` means a not-live connector
+ * recorded interest, and `imessage` points at the dedicated recipient panel rendered above the catalog.
+ */
+export type EverydayConnectorConnectOutcome =
+  | "redirecting"
+  | "connected"
+  | "pending"
+  | "waitlisted"
+  | "imessage"
+  | "noop";
+
+export interface EverydayConnectorConnectResult {
+  readonly outcome: EverydayConnectorConnectOutcome;
+}
+
 /** An inline artifact that landed in the thread or awaits approval — a draft or a before/after diff. */
 export interface Deliverable {
   readonly title: string;

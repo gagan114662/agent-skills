@@ -26,6 +26,7 @@ import {
   type Deliverable,
   type EverydayData,
   type EverydayConnector,
+  type EverydayConnectorConnectResult,
   type ExternalAction,
   type AgentLane,
   type MarketingAction,
@@ -305,6 +306,34 @@ function roomIMessageNote(status?: IMessageStatusResponse | null): string {
   return copy.setupNeeded;
 }
 
+/**
+ * A connector "connect" click handler (#1551). Returns what the click did so the panel can render honest,
+ * visible feedback; a `void` return (or a throw) is still handled — the panel shows a generic confirmation or
+ * error rather than a silent no-op.
+ */
+type ConnectorConnectHandler = (id: string) => Promise<EverydayConnectorConnectResult | void> | void;
+
+function connectorOutcomeMessage(result: EverydayConnectorConnectResult | void): string | null {
+  const c = EVERYDAY.connectors;
+  if (!result) return null;
+  switch (result.outcome) {
+    case "redirecting":
+      return c.outcome.redirecting;
+    case "connected":
+      return c.outcome.connected;
+    case "pending":
+      return c.outcome.pending;
+    case "waitlisted":
+      return c.outcome.waitlisted;
+    case "imessage":
+      return c.outcome.imessage;
+    case "noop":
+      return null;
+    default:
+      return null;
+  }
+}
+
 function ConnectorSetup({
   connectors,
   onConnect,
@@ -314,13 +343,31 @@ function ConnectorSetup({
   onDeleteIMessageRecipient,
 }: {
   connectors: readonly EverydayConnector[];
-  onConnect?: (id: string) => void;
+  onConnect?: ConnectorConnectHandler;
   imessageStatus?: IMessageStatusResponse | null;
   onSaveIMessageRecipient?: (input: { recipient: string; serviceName?: string }) => Promise<void> | void;
   onTestIMessageRecipient?: () => Promise<void> | void;
   onDeleteIMessageRecipient?: () => Promise<void> | void;
 }): React.JSX.Element {
   const c = EVERYDAY.connectors;
+  // Per-connector click feedback so every actionable control responds visibly (#1551).
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<Record<string, { tone: "ok" | "error"; text: string }>>({});
+
+  async function handleConnect(id: string): Promise<void> {
+    if (!onConnect || busyId) return;
+    setBusyId(id);
+    setFeedback((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => key !== id)));
+    try {
+      const text = connectorOutcomeMessage(await onConnect(id));
+      if (text) setFeedback((prev) => ({ ...prev, [id]: { tone: "ok", text } }));
+    } catch {
+      setFeedback((prev) => ({ ...prev, [id]: { tone: "error", text: c.connectError } }));
+    } finally {
+      setBusyId((current) => (current === id ? null : current));
+    }
+  }
+
   const groups = (["visibility", "productivity", "marketing", "publishing"] as const)
     .map((group) => ({
       group,
@@ -359,9 +406,26 @@ function ConnectorSetup({
                   {item.status === "connected" ? (
                     <span className="everyday-connector__badge">{c.connected}</span>
                   ) : onConnect ? (
-                    <button type="button" className="everyday-connector__link" onClick={() => onConnect(item.id)}>
-                      {item.actionLabel}
-                    </button>
+                    <div className="everyday-connector__action">
+                      <button
+                        type="button"
+                        className="everyday-connector__link"
+                        onClick={() => void handleConnect(item.id)}
+                        disabled={busyId === item.id}
+                        aria-busy={busyId === item.id || undefined}
+                      >
+                        {busyId === item.id ? c.connecting : item.actionLabel}
+                      </button>
+                      {feedback[item.id] && (
+                        <p
+                          className="everyday-connector__feedback"
+                          data-tone={feedback[item.id]!.tone}
+                          role={feedback[item.id]!.tone === "error" ? "alert" : "status"}
+                        >
+                          {feedback[item.id]!.text}
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <div className="everyday-connector__public">
                       <a className="everyday-connector__link" href={APP_ROUTES.everyday}>
@@ -1618,7 +1682,7 @@ export function EverydayShell({
   data?: EverydayData;
   hour?: number;
   approvalActions?: EverydayApprovalActions;
-  onConnectorConnect?: (id: string) => void;
+  onConnectorConnect?: ConnectorConnectHandler;
   imessageStatus?: IMessageStatusResponse | null;
   onSaveIMessageRecipient?: (input: { recipient: string; serviceName?: string }) => Promise<void> | void;
   onTestIMessageRecipient?: () => Promise<void> | void;

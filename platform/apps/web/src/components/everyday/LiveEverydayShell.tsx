@@ -22,10 +22,12 @@ import {
 } from "../onboarding/first-run-receipt.js";
 import { EverydayShell, type EverydayRoomLaunchResult, type EverydayShellTheme } from "./EverydayShell.js";
 import {
+  defaultConnectors,
   emptyEverydayData,
   type AgentLane,
   type ApprovalCard,
   type EverydayConnector,
+  type EverydayConnectorConnectResult,
   type EverydayData,
   type LaunchReadinessItem,
   type ThreadEntry,
@@ -939,21 +941,51 @@ export function LiveEverydayShell({
     void refreshCodexStatus().catch(() => setCodexStatus(null));
   }, [state.phase, state.identity?.workspaceId, store]);
 
-  async function connect(id: string): Promise<void> {
-    const connection = connections?.find((item) => item.id === id);
-    if (!connection) return;
-    if (connection.connected) return;
+  // Wire every connector "connect" click to a real setup/OAuth flow (#1551). This never silently no-ops:
+  // it works from the live connections list AND from the fallback catalog (when the list failed to load),
+  // hands OAuth providers off to their authorize screen, records interest for not-live channels, and turns
+  // on one-click channels — always returning an outcome the shell renders as visible feedback.
+  async function connect(id: string): Promise<EverydayConnectorConnectResult> {
+    const connection = connections?.find((item) => item.id === id) ?? null;
+    // The fallback catalog carries the same ids/statuses, so a click still knows what it is doing offline.
+    const fallback = connection ? null : defaultConnectors().find((item) => item.id === id) ?? null;
+    if (connection?.connected) return { outcome: "noop" };
+
+    // Telegram has a dedicated bot deep-link rather than an OAuth consent screen.
     if (id === "telegram_room") {
       navigateToTelegramStart(await api.startTelegramConnection());
-      return;
+      return { outcome: "redirecting" };
     }
-    if (connection.status === "coming_soon") {
+
+    // iMessage's real setup is the recipient panel rendered directly above the catalog.
+    if (id === "imessage") return { outcome: "imessage" };
+
+    // Not live yet: record interest so the click has an honest next step instead of a dead stop.
+    const comingSoon = connection ? connection.status === "coming_soon" : fallback?.status === "coming_soon";
+    if (comingSoon) {
       await api.joinConnectionWaitlist(id).catch(() => undefined);
-      return;
+      return { outcome: "waitlisted" };
     }
-    if (connection.auth === "one_click") await api.enableConnection(id);
-    else await api.startConnectionOAuth(id);
+
+    // Consumer OAuth: park consent, then hand the browser to the provider authorize screen.
+    if (connection?.auth === "oauth") {
+      const started = await api.startConnectionOAuth(id);
+      if (started.status === "coming_soon") {
+        await api.joinConnectionWaitlist(id).catch(() => undefined);
+        return { outcome: "waitlisted" };
+      }
+      if (started.authorizePath) {
+        window.location.assign(started.authorizePath);
+        return { outcome: "redirecting" };
+      }
+      await refreshConnections();
+      return { outcome: "pending" };
+    }
+
+    // One-click live channel (email, website, web room, social) — turn it on now, then re-read state.
+    await api.enableConnection(id);
     await refreshConnections();
+    return { outcome: "connected" };
   }
 
   const data = liveEverydayDataFromState(state, firstRun, codexStatus);
@@ -966,7 +998,7 @@ export function LiveEverydayShell({
           ? connections.map((connection) => connectorFromConnection(connection, imessageStatus))
           : data.connectors,
       }}
-      onConnectorConnect={(id) => void connect(id)}
+      onConnectorConnect={(id) => connect(id)}
       imessageStatus={imessageStatus}
       onSaveIMessageRecipient={async (input) => {
         await api.saveIMessageRecipient(input);
