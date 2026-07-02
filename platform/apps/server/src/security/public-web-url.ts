@@ -222,14 +222,23 @@ export async function validatePublicWebUrl(
 }
 
 export function createPinnedPublicWebLookup(target: ValidatedPublicWebUrl): LookupFunction {
-  return (hostname, _options, callback) => {
+  return (hostname, options, callback) => {
     const requested = normalizePublicHostname(hostname);
+    const isAll = typeof options === "object" && options !== null && options.all === true;
     if (requested !== target.hostname) {
       const err = new Error(
         "refusing DNS lookup for unvalidated host " + hostname,
       ) as NodeJS.ErrnoException;
       err.code = "ENOTFOUND";
+      if (isAll) {
+        callback(err, []);
+        return;
+      }
       callback(err, "", target.family);
+      return;
+    }
+    if (isAll) {
+      callback(null, [{ address: target.address, family: target.family }]);
       return;
     }
     callback(null, target.address, target.family);

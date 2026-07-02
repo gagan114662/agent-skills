@@ -66,6 +66,32 @@ describe("public web URL guard", () => {
     );
   });
 
+  it("returns Node lookup array results when options.all is requested", async () => {
+    const target = await validatePublicWebUrl("https://example.com/", async () => [
+      { address: "93.184.216.34", family: 4 },
+    ]);
+    expect(target).not.toBeNull();
+
+    const lookup = createPinnedPublicWebLookup(target!);
+    await expect(
+      new Promise<Array<{ address: string; family: number }>>((resolve, reject) => {
+        lookup("example.com", { all: true }, (err, addresses) => {
+          if (err) reject(err);
+          else resolve(addresses as Array<{ address: string; family: number }>);
+        });
+      }),
+    ).resolves.toEqual([{ address: "93.184.216.34", family: 4 }]);
+
+    await expect(
+      new Promise((resolve, reject) => {
+        lookup("attacker.example", { all: true }, (err, addresses) => {
+          if (err) reject({ code: err.code, addresses });
+          else resolve(addresses);
+        });
+      }),
+    ).rejects.toEqual({ code: "ENOTFOUND", addresses: [] });
+  });
+
   it("rejects oversized responses by content-length before buffering", async () => {
     const res = new Response("tiny", { headers: { "content-length": "9" } });
     await expect(readPublicWebResponseText(res, 8)).resolves.toBeNull();
