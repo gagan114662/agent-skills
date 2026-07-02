@@ -52,6 +52,40 @@ export function assertKeyMatchesMode(declared: BillingMode, key: string): void {
   if (keyMode !== declared) throw new BillingModeMismatchError(declared, keyMode);
 }
 
+/**
+ * Startup billing-config classification (#1510). Pure and SDK-free — the single source of truth a boot
+ * preflight consults BEFORE any request reaches the Stripe adapter. ADR-0421's key/mode guard only ran
+ * *per-request* inside the adapter, so a live key with `BILLING_MODE` unset (→ `test`) booted cleanly and
+ * then failed EVERY checkout with a 502 — a silent revenue outage. This classifier lets the preflight catch
+ * the same disagreement at boot.
+ */
+export type BillingConfigDiagnosis = "ok" | "missing_key" | "mode_key_mismatch";
+
+/** The (non-secret) inputs the config classifier reasons over — never the key value itself. */
+export interface BillingConfigProbe {
+  /** The configured backend. Only `stripe` can move money; anything else is inert. */
+  provider: string;
+  /** The declared `BILLING_MODE`. */
+  mode: BillingMode;
+  /** The mode inferred from the supplied key via {@link stripeKeyMode}; `unknown` if absent/opaque. */
+  keyMode: KeyMode;
+  /** Whether a `STRIPE_SECRET_KEY` is present at all. */
+  hasKey: boolean;
+}
+
+/**
+ * Classify a billing configuration. `none` provider is always `ok` (it can never charge). For `stripe`:
+ * no key → `missing_key`; a mode-bearing key whose mode contradicts the declared mode → `mode_key_mismatch`
+ * (the #1510 case); an unclassifiable key → `ok` (Stripe rejects a bad key itself — we never manufacture a
+ * false-positive boot failure). Reasons over prefixes only; the key value is neither read nor returned.
+ */
+export function diagnoseBillingConfig(probe: BillingConfigProbe): BillingConfigDiagnosis {
+  if (probe.provider !== "stripe") return "ok";
+  if (!probe.hasKey) return "missing_key";
+  if (probe.keyMode !== "unknown" && probe.keyMode !== probe.mode) return "mode_key_mismatch";
+  return "ok";
+}
+
 /** Read-only go-live snapshot surfaced to the UI so the "test mode" banner reflects reality. */
 export interface BillingStatus {
   /** The configured backend (`none` | `stripe`). */
