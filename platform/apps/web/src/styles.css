@@ -4335,12 +4335,21 @@ select:focus-visible {
    `0% { opacity: 0 }` during that delay. If the entrance animation is then dropped on the modal's async /
    mid-transition mount (browsers can skip animations on freshly-inserted offscreen nodes), those cards
    stick at opacity:0 forever while Starter (delay 0, no backwards window) shows alone — empty space where
-   the upsell tiers belong. The durable fix: the pop is now a PURE TRANSFORM (scale/translate). Opacity is
-   always 1, so a plan card's visibility can NEVER be a function of the animation, the stagger, or the fill
-   mode. The pop stays a delightful entrance, but it is strictly progressive enhancement, never a gate. */
+   the upsell tiers belong. The durable fix for opacity was to make the pop a PURE TRANSFORM. But #321 kept
+   `fill-mode: both`, which re-opened the SAME hole one layer down (the #1489 pricing-CTA follow-up): with
+   `both`, the *backwards* fill applies `0% { transform: scale(0.92) translateY(8px) }` during the staggered
+   `animation-delay`, and if the entrance is dropped on an offscreen/async mount the card sticks at that
+   shrunk, shifted transform forever. A transform moves the PAINTED box and the hit-test box together, so a
+   stranded 0% transform displaces the CTA's clickable region off its visual position — `elementFromPoint`
+   at the button center misses the anchor and the click is swallowed (buyer stuck on /pricing). The durable
+   fix: the pop leaves NO lingering transform. The card RESTS at `transform: none`, and the animation uses
+   `forwards` (never `both`) so it neither backwards-fills the shrunk 0% during the delay nor strands it when
+   dropped — the transform is a strictly progressive entrance, never load-bearing for layout or hit-testing. */
 .pricing-card--pop {
   opacity: 1;
-  animation: pricing-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  /* Resting/dropped state is untransformed: painted box == hit-test box, so clicks always land. */
+  transform: none;
+  animation: pricing-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 @keyframes pricing-pop {
   0% {
@@ -4350,7 +4359,7 @@ select:focus-visible {
     transform: scale(1.03) translateY(0);
   }
   100% {
-    transform: scale(1) translateY(0);
+    transform: none;
   }
 }
 .pricing-card {
