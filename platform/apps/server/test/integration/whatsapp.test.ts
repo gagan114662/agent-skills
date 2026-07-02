@@ -43,7 +43,8 @@ const silentLogger: SessionLogger = {
 const fakeLauncher = {
   launch: vi.fn(async (input: LaunchInput) => {
     teamLaunches.push(input);
-    if (input.teamRunId && input.task.includes("research artifact ready: <domain or target>")) {
+    const taskText = input.task.toLowerCase();
+    if (input.teamRunId && taskText.includes("research artifact ready: <domain or target>")) {
       await channelPoster.post({
         workspaceId: input.workspaceId,
         channelId: input.channelId,
@@ -70,7 +71,7 @@ const fakeLauncher = {
         }),
       });
     }
-    if (input.teamRunId && input.task.includes("Produce the required draft_set artifact")) {
+    if (input.teamRunId && taskText.includes("produce the required draft_set artifact")) {
       await channelPoster.post({
         workspaceId: input.workspaceId,
         channelId: input.channelId,
