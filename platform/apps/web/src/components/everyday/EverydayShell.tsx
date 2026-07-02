@@ -43,6 +43,7 @@ export type EverydayDecisionStatus = "idle" | "pending" | "shipped" | "revision"
 
 export interface EverydayRoomLaunchResult {
   notices?: readonly string[];
+  teamRunId?: string;
 }
 
 export interface EverydayApprovalActions {
@@ -137,7 +138,13 @@ function NorthStarBar({ data }: { data: NorthStar }): React.JSX.Element {
 }
 
 /** An inline deliverable: a draft body, or a before/after diff. Lands right in the thread and on cards. */
-function DeliverableBody({ deliverable }: { deliverable: Deliverable }): React.JSX.Element {
+function DeliverableBody({
+  deliverable,
+  showTitle = true,
+}: {
+  deliverable: Deliverable;
+  showTitle?: boolean;
+}): React.JSX.Element {
   if (deliverable.kind === "diff") {
     return (
       <div className="everyday-deliverable everyday-deliverable--diff">
@@ -152,6 +159,9 @@ function DeliverableBody({ deliverable }: { deliverable: Deliverable }): React.J
   return (
     <div className="everyday-deliverable everyday-deliverable--draft">
       <p className="everyday-deliverable__label">{EVERYDAY.thread.previewLabel}</p>
+      {showTitle ? (
+        <h3 className="everyday-deliverable__title">{customerVisibleAgentText(deliverable.title)}</h3>
+      ) : null}
       <p className="everyday-deliverable__body">{customerVisibleAgentText(deliverable.preview)}</p>
     </div>
   );
@@ -614,7 +624,7 @@ function ApprovalCardView({
           <h3 className="everyday-card__title">{card.deliverable.title}</h3>
         </div>
       </header>
-      <DeliverableBody deliverable={card.deliverable} />
+      <DeliverableBody deliverable={card.deliverable} showTitle={false} />
       <p className="everyday-card__consequence">
         {a.consequencePrefix} {card.consequence}.
       </p>
@@ -1561,6 +1571,27 @@ function Composer({ onSubmit }: { onSubmit: (value: string) => void }): React.JS
   );
 }
 
+function threadEntryKey(entry: ThreadEntry): string {
+  if (entry.kind === "deliverable") {
+    return ["deliverable", entry.agent, entry.deliverable.title, entry.deliverable.preview].join("\u0000");
+  }
+  return ["line", entry.agent, entry.text].join("\u0000");
+}
+
+function mergeLocalAndLiveThread(
+  localThread: readonly ThreadEntry[],
+  liveThread: readonly ThreadEntry[],
+  activeTeamRunId: string | null,
+): readonly ThreadEntry[] {
+  if (localThread.length === 0) return liveThread;
+  const matchingLive = activeTeamRunId
+    ? liveThread.filter((entry) => entry.teamRunId === activeTeamRunId)
+    : [];
+  if (matchingLive.length === 0) return localThread;
+  const localKeys = new Set(localThread.map(threadEntryKey));
+  return [...localThread, ...matchingLive.filter((entry) => !localKeys.has(threadEntryKey(entry)))];
+}
+
 /**
  * The everyday shell. Presentational + self-contained: takes the full {@link EverydayData}. The fallback is
  * an honest empty live state, not the demo seed; explicit demos/tests can still pass seedEveryday().
@@ -1605,10 +1636,11 @@ export function EverydayShell({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [room, setRoom] = useState<readonly AgentLane[]>(data.room);
   const [localThread, setLocalThread] = useState<readonly ThreadEntry[]>([]);
+  const [activeTeamRunId, setActiveTeamRunId] = useState<string | null>(null);
   const [operatorPacket, setOperatorPacket] = useState<string | null>(null);
   const pending = data.approvals.filter((c) => !shipped.includes(c.id));
   const greeting = EVERYDAY.greeting(data.memberName, partOfDay(hour));
-  const thread = localThread.length > 0 ? localThread : data.thread;
+  const thread = mergeLocalAndLiveThread(localThread, data.thread, activeTeamRunId);
 
   function startRoom(goal: string): void {
     setOperatorPacket(operatorPacketForGoal?.(goal) ?? null);
@@ -1619,10 +1651,12 @@ export function EverydayShell({
       at: EVERYDAY.room.chatLabel,
       text: goal,
     };
-    setLocalThread((entries) => [...entries, userEntry]);
+    setActiveTeamRunId(null);
+    setLocalThread([userEntry]);
 
     const showAcceptedRoom = (result?: EverydayRoomLaunchResult | void): void => {
       const notices = result?.notices ?? [];
+      setActiveTeamRunId(result?.teamRunId ?? null);
       setRoom(defaultAgentRoom(goal));
       setLocalThread((entries) => [
         ...entries,

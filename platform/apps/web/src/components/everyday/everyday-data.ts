@@ -52,6 +52,7 @@ export interface Deliverable {
 export type ThreadEntry =
   | {
       readonly id: string;
+      readonly teamRunId?: string;
       readonly kind: "agent-line";
       readonly agent: string;
       readonly at: string;
@@ -59,6 +60,7 @@ export type ThreadEntry =
     }
   | {
       readonly id: string;
+      readonly teamRunId?: string;
       readonly kind: "deliverable";
       readonly agent: string;
       readonly at: string;

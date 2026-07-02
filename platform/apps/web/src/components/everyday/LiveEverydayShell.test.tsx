@@ -98,7 +98,7 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(
       (await screen.findAllByText("Scout found a real Search Console issue.")).length,
     ).toBeGreaterThan(0);
-    expect(await screen.findByText("Send follow-up to Morgan")).toBeInTheDocument();
+    expect((await screen.findAllByText("Send follow-up to Morgan")).length).toBeGreaterThan(0);
     expect(screen.getByText("Hi Morgan — here's the real follow-up draft.")).toBeInTheDocument();
     expect(screen.queryByText(/northwind/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/dana@northwind\.co/i)).not.toBeInTheDocument();
@@ -520,7 +520,7 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(screen.queryByText(/live relay verified for gagan@example.com/i)).not.toBeInTheDocument();
   });
 
-  it("blocks iMessage room launch before posting when the signed-in team engine is not connected", async () => {
+  it("posts the brief before blocking agent launch when the signed-in team engine is not connected", async () => {
     vi.spyOn(api, "getConnections").mockResolvedValue({
       connections: [],
       canManageInternal: false,
@@ -535,7 +535,14 @@ describe("LiveEverydayShell (#1181)", () => {
       fallback: "none",
       apiKeySatisfies: false,
     });
-    const postMessage = vi.spyOn(api, "postMessage");
+    vi.spyOn(api, "startIMessageRoom").mockResolvedValue({
+      status: "not_configured",
+      dryRun: false,
+      error: "iMessage relay is not configured for this workspace yet.",
+    });
+    const postMessage = vi
+      .spyOn(api, "postMessage")
+      .mockResolvedValue(makeMessage({ id: "web-room", channelId: "c1", body: "build ipop.ai" }));
     const launchTeamRun = vi.spyOn(api, "launchTeamRun");
     const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
 
@@ -553,7 +560,8 @@ describe("LiveEverydayShell (#1181)", () => {
         "The team engine is not connected to your signed-in subscription yet. Connect it before starting the agent room.",
       ),
     ).toBeInTheDocument();
-    expect(postMessage).not.toHaveBeenCalled();
+    await waitFor(() => expect(postMessage).toHaveBeenCalledWith("c1", "build ipop.ai"));
+    expect(screen.getAllByText("build ipop.ai").length).toBeGreaterThan(0);
     expect(launchTeamRun).not.toHaveBeenCalled();
   });
 
@@ -749,6 +757,81 @@ describe("LiveEverydayShell (#1181)", () => {
     fireEvent.click(screen.getByText("Open packet"));
     expect(screen.getByText(/codex_work_packet/)).toBeInTheDocument();
     expect(screen.getByText(/audit_label: codex_operator_lane/)).toBeInTheDocument();
+  });
+
+  it("submits an everyday brief, creates a team run, posts the brief, and renders a named Quill draft artifact (#1536)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [],
+      canManageInternal: false,
+    });
+    vi.spyOn(api, "getCodexStatus").mockResolvedValue({
+      connected: true,
+      reason: "",
+      selectedHarness: "codex",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "signed_in_subscription",
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
+    vi.spyOn(api, "startIMessageRoom").mockResolvedValue({
+      status: "not_configured",
+      dryRun: false,
+      error: "iMessage relay is not configured for this workspace yet.",
+    });
+    const postMessage = vi
+      .spyOn(api, "postMessage")
+      .mockResolvedValue(makeMessage({ id: "brief-1", channelId: "c1", body: "launch getfoolish.com" }));
+    vi.spyOn(api, "searchMembers").mockImplementation(async (_workspaceId, q) => [
+      { id: "ag-" + q.toLowerCase(), kind: "agent", displayName: q },
+    ]);
+    const launchTeamRun = vi.spyOn(api, "launchTeamRun").mockResolvedValue({
+      teamRunId: "team-1",
+      subtaskCount: 5,
+      subtasks: [],
+    });
+    const draftMessage = makeMessage({
+      id: "quill-draft",
+      channelId: "c1",
+      authorMemberId: "ag-quill",
+      body:
+        '::team-event:: {"teamRunId":"team-1","subtaskId":"quill","agentMemberId":"ag-quill","kind":"milestone","summary":"draft set ready: foolish launch","branch":"b-quill","createdAt":"2026-07-02T00:00:00.000Z","artifact":{"kind":"draft_set","schemaVersion":1,"drafts":[{"format":"landing_hero","title":"Foolish first-click hero","fields":{"headline":"Find the expensive leak before your next ad dollar","subhead":"Get Foolish turns messy acquisition guesses into one focused next test.","cta":"Find the leak"},"citations":["Scout proof point"]}]}}',
+    });
+    const { store, rt } = renderWithStore(<LiveEverydayShell />, {
+      messages: [],
+      members: [
+        { id: "me1", kind: "human", displayName: "Ada" },
+        { id: "ag-quill", kind: "agent", displayName: "Quill" },
+      ],
+      approvals: [],
+    });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    fireEvent.change(await screen.findByRole("textbox", { name: EVERYDAY.prompt }), {
+      target: { value: "launch getfoolish.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: EVERYDAY.composerSend }));
+
+    await waitFor(() => expect(postMessage).toHaveBeenCalledWith("c1", "launch getfoolish.com"));
+    await waitFor(() => expect(launchTeamRun).toHaveBeenCalled());
+    await screen.findByText("Reading launch getfoolish.com and lining up the first useful marketing moves.");
+    act(() => {
+      rt.fire({ type: "message", message: draftMessage });
+    });
+    await waitFor(() =>
+      expect(store.getState().messagesByChannel.c1?.some((message) => message.id === "quill-draft")).toBe(true),
+    );
+    expect(
+      liveEverydayDataFromState(store.getState()).thread.some(
+        (entry) => entry.kind === "deliverable" && entry.deliverable.title === "Foolish first-click hero",
+      ),
+    ).toBe(true);
+    expect(screen.getAllByText("launch getfoolish.com").length).toBeGreaterThan(0);
+    expect(await screen.findByText("Foolish first-click hero")).toBeInTheDocument();
+    expect(screen.getByText(/Find the expensive leak before your next ad dollar/i)).toBeInTheDocument();
   });
 
   it("lets the signed-in user save and verify their iMessage destination before room launch (#1283)", async () => {
@@ -1037,7 +1120,9 @@ describe("LiveEverydayShell (#1181)", () => {
       (await screen.findAllByText("your hero buries the offer below the fold.")).length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("recorded first result for acme.com").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("site-read receipt").length).toBeGreaterThan(0);
+    expect(screen.queryByText("site-read receipt")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Research receipt captured; draft still pending").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("waiting for Quill or Echo content").length).toBeGreaterThan(0);
     expect(screen.getAllByText("send/spend gates active").length).toBeGreaterThan(0);
     expect(screen.getByText(EVERYDAY.dashboard.rankedWork)).toBeInTheDocument();
     expect(screen.getByText("first useful marketing result")).toBeInTheDocument();
