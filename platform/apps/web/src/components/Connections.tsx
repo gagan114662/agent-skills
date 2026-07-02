@@ -10,7 +10,7 @@
  */
 import { useState } from "react";
 import { CONNECTIONS } from "../brand.js";
-import type { ConnectionsResponse, ConnectionView } from "../api/types.js";
+import type { ConnectionsResponse, ConnectionView, OutboundSendReceipt } from "../api/types.js";
 
 export interface ConnectionsProps {
   data: ConnectionsResponse | null;
@@ -82,6 +82,8 @@ export function Connections(props: ConnectionsProps): React.JSX.Element {
           ))
         : null}
 
+      <OutboundReceipts receipts={data.outboundReceipts} />
+
       {error ? (
         <p className="connections__error" role="alert">
           {error}
@@ -93,6 +95,46 @@ export function Connections(props: ConnectionsProps): React.JSX.Element {
 
 function capabilityLabel(capability: string): string {
   return capability.replace(/[_-]+/g, " ");
+}
+
+/**
+ * Recent outbound sends (#395 §3): the read-back proof that an approved send actually reached a real inbox
+ * (#200 §3). Presentational — receipts come from the server, newest first, and the section is hidden entirely
+ * until a real (sandbox) send has landed, so it never invents activity. `verified` distinguishes a
+ * provider-confirmed delivery from an unconfirmed attempt; React escapes every value (a receipt is untrusted).
+ */
+function OutboundReceipts({ receipts }: { receipts: OutboundSendReceipt[] | undefined }): React.JSX.Element | null {
+  if (!receipts || receipts.length === 0) return null;
+  return (
+    <section className="connections__receipts">
+      <h4>{CONNECTIONS.receiptsTitle}</h4>
+      <p className="connections__hint">{CONNECTIONS.receiptsHint}</p>
+      <ul className="connections__receipt-list">
+        {receipts.map((r) => (
+          <li key={r.id} className="connections__receipt">
+            <span
+              className={
+                r.verified
+                  ? "connections__receipt-badge connections__receipt-badge--delivered"
+                  : "connections__receipt-badge connections__receipt-badge--pending"
+              }
+            >
+              {r.verified ? CONNECTIONS.receiptDelivered : CONNECTIONS.receiptUnconfirmed}
+            </span>
+            <span className="connections__receipt-to">
+              {CONNECTIONS.receiptTo} {r.recipient}
+            </span>
+            <span className="connections__receipt-ref" title={CONNECTIONS.receiptRef}>
+              {r.externalRef}
+            </span>
+            <time suppressHydrationWarning className="connections__receipt-at" dateTime={new Date(r.observedAtMs).toISOString()}>
+              {new Date(r.observedAtMs).toLocaleString()}
+            </time>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 function ConfigIssueNotice({ connection }: { connection: ConnectionView }): React.JSX.Element | null {

@@ -8646,6 +8646,62 @@ body[data-public-surface="light"],
   color: var(--text);
 }
 
+/* --- recent outbound sends: the #395 §3 read-back receipts --- */
+.connections__receipts {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.connections__receipt-list {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.connections__receipt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.connections__receipt-badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.connections__receipt-badge--delivered {
+  border-color: color-mix(in srgb, var(--online) 46%, var(--line));
+  color: var(--text);
+}
+.connections__receipt-badge--pending {
+  border-color: color-mix(in srgb, var(--danger) 36%, var(--line));
+  color: var(--text-dim);
+}
+.connections__receipt-to {
+  color: var(--text);
+}
+.connections__receipt-ref {
+  font-family: var(--console-mono);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+.connections__receipt-at {
+  margin-left: auto;
+  color: var(--text-dim);
+}
+
 /* --- panel section headers with a status badge on the right --- */
 .marketing-target-panel__head,
 .brand-kit-panel__head {
