@@ -392,6 +392,57 @@ describe("EverydayShell — Tomo-simple cowork room (#1265)", () => {
     expect(onConnectorConnect).toHaveBeenCalled();
   });
 
+  it("shows visible feedback after a connect click resolves (#1551)", async () => {
+    const onConnectorConnect = vi.fn(async () => ({ outcome: "waitlisted" as const }));
+    render(
+      <EverydayShell
+        data={emptyData({
+          connectors: [
+            {
+              id: "linkedin",
+              group: "marketing",
+              name: "LinkedIn",
+              status: "coming_soon",
+              detail: "native LinkedIn posting is not live yet.",
+              actionLabel: "notify me",
+            },
+          ],
+        })}
+        onConnectorConnect={onConnectorConnect}
+      />,
+    );
+    const setup = screen.getByRole("region", { name: EVERYDAY.connectors.heading });
+    fireEvent.click(within(setup).getByRole("button", { name: "notify me" }));
+    expect(onConnectorConnect).toHaveBeenCalledWith("linkedin");
+    expect(await within(setup).findByText(EVERYDAY.connectors.outcome.waitlisted)).toBeInTheDocument();
+  });
+
+  it("surfaces an error when a connect click fails instead of failing silently (#1551)", async () => {
+    const onConnectorConnect = vi.fn(async () => {
+      throw new Error("network down");
+    });
+    render(
+      <EverydayShell
+        data={emptyData({
+          connectors: [
+            {
+              id: "email",
+              group: "productivity",
+              name: "Email",
+              status: "available",
+              detail: "email, replies, and follow-up receipts.",
+              actionLabel: "connect",
+            },
+          ],
+        })}
+        onConnectorConnect={onConnectorConnect}
+      />,
+    );
+    const setup = screen.getByRole("region", { name: EVERYDAY.connectors.heading });
+    fireEvent.click(within(setup).getByRole("button", { name: "connect" }));
+    expect(await within(setup).findByRole("alert")).toHaveTextContent(EVERYDAY.connectors.connectError);
+  });
+
   it("routes public dashboard connector actions to the workspace instead of rendering no-op buttons", () => {
     render(<EverydayShell data={ipopDogfoodEveryday()} dashboardFirst />);
     const setup = screen.getByRole("region", { name: EVERYDAY.connectors.heading });

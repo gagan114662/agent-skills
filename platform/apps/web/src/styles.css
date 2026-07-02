@@ -10308,6 +10308,27 @@ body[data-public-surface="light"],
   cursor: pointer;
   font: inherit;
 }
+.everyday-connector__link:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.everyday-connector__action {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  max-width: 170px;
+}
+.everyday-connector__feedback {
+  margin: 0;
+  color: var(--ed-text-dim);
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: right;
+}
+.everyday-connector__feedback[data-tone="error"] {
+  color: var(--ed-pop);
+}
 .everyday-connector__public {
   display: flex;
   flex-direction: column;

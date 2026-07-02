@@ -1758,6 +1758,15 @@ export const EVERYDAY = {
     connect: "connect",
     connected: "connected",
     pending: "verify",
+    connecting: "connecting…",
+    connectError: "that didn't connect. try again in a moment.",
+    outcome: {
+      redirecting: "opening the secure connect screen…",
+      connected: "connected.",
+      pending: "consent recorded — finishing setup…",
+      waitlisted: "not live yet — we'll email you the moment it opens.",
+      imessage: "add your iMessage address above to finish setup.",
+    },
     publicAction: "open workspace",
     publicHint: "connectors need your workspace before they can run.",
     imessage: {
