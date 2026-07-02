@@ -353,14 +353,23 @@ function checkClaudeAuth(env: NodeJS.ProcessEnv): CheckResult {
       message: "deployment-wide Claude subscription token present (CLAUDE_CODE_OAUTH_TOKEN)",
     };
   }
+  // #1568: the deployment-env Anthropic API key is a valid fleet credential (owner decision
+  // 2026-07-02) — presence only, never the value.
+  if (env.ANTHROPIC_API_KEY) {
+    return {
+      name,
+      status: "pass",
+      message: "deployment-wide Anthropic API key present (ANTHROPIC_API_KEY)",
+    };
+  }
   return {
     name,
     status: "warn",
     message:
-      "no deployment-wide Claude token — agents authenticate with each workspace's connected subscription " +
-      "(Settings → Connect Claude); a workspace that hasn't connected gets a reconnect prompt, never an API key",
+      "no deployment-wide Claude credential — agents authenticate with each workspace's connected subscription " +
+      "(Settings → Connect Claude) or the server env's ANTHROPIC_API_KEY; a workspace with neither gets a reconnect prompt",
     remedy:
-      "Each workspace owner connects their own `claude setup-token` in Settings → Connect Claude.",
+      "Connect a workspace `claude setup-token` in Settings → Connect Claude, or set ANTHROPIC_API_KEY in the server env.",
   };
 }
 

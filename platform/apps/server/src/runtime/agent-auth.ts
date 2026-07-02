@@ -16,11 +16,19 @@ import { isWellFormedClaudeKey } from "../auth/claude-key-validation.js";
  */
 export type AgentAuth =
   | { mode: "subscription"; secrets: { CLAUDE_CODE_OAUTH_TOKEN: string } }
+  | { mode: "api_key"; secrets: { ANTHROPIC_API_KEY: string } }
   | { mode: "none"; secrets: Record<string, never> };
 
 export interface AgentAuthInput {
   /** The workspace's own Claude subscription token (`claude setup-token`), or null if not connected. */
   subscriptionToken: string | null;
+  /**
+   * The deployment's Anthropic API key (#1568, owner decision 2026-07-02): read from the server env
+   * (`ANTHROPIC_API_KEY` set by the owner in Fly), NEVER stored in code or the DB. Fallback only — a
+   * workspace's own connected subscription token still wins, so per-tenant billing is unchanged when
+   * connected. Optional so every existing caller keeps the #246 subscription-or-nothing behavior.
+   */
+  envApiKey?: string | null;
 }
 
 /** A non-empty, non-whitespace string, else null — a blank stored secret must not count as auth. */
@@ -31,9 +39,13 @@ function present(value: string | null | undefined): string | null {
 }
 
 /**
- * Decide the auth to inject for a session (#246): the workspace subscription token, else NOTHING.
- * There is deliberately no API-key fallback — the subscription token is the only model credential an
- * agent run can ever carry, so an API key can never ship from this path.
+ * Decide the auth to inject for a session: the workspace subscription token first (#246 unchanged),
+ * else the deployment's env `ANTHROPIC_API_KEY` (#1568), else NOTHING. The owner decision of
+ * 2026-07-02 reintroduced a DEPLOYMENT-level API-key path so the Claude runtime can run without a
+ * per-workspace subscription connect: the key is the owner's own Fly secret, read from env only —
+ * never hardcoded, never persisted, and still redacted from all streamed output like every other
+ * injected secret. A workspace's connected subscription always wins, so connected tenants keep
+ * billing their own subscription exactly as before.
  */
 export function decideAgentAuth(input: AgentAuthInput): AgentAuth {
   const subscriptionToken = present(input.subscriptionToken);
@@ -44,6 +56,10 @@ export function decideAgentAuth(input: AgentAuthInput): AgentAuth {
   // at entry by the live checker and, failing that, by the existing observed-failure → `expired` path.
   if (subscriptionToken && isWellFormedClaudeKey(subscriptionToken)) {
     return { mode: "subscription", secrets: { CLAUDE_CODE_OAUTH_TOKEN: subscriptionToken } };
+  }
+  const envApiKey = present(input.envApiKey);
+  if (envApiKey) {
+    return { mode: "api_key", secrets: { ANTHROPIC_API_KEY: envApiKey } };
   }
   return { mode: "none", secrets: {} };
 }
@@ -62,6 +78,11 @@ export function harnessRequiresAuth(kind: HarnessKind): boolean {
 export interface AgentAuthResolverDeps {
   /** The workspace's subscription token from the per-tenant vault (null when not connected). */
   getSubscriptionToken(workspaceId: string): Promise<string | null>;
+  /**
+   * The deployment env's Anthropic API key (#1568), or null. Read fresh per resolve so a rotated
+   * Fly secret takes effect without a restart-ordering hazard. Optional: absent ⇒ #246 behavior.
+   */
+  getEnvApiKey?(): string | null;
 }
 
 /**
@@ -75,7 +96,7 @@ export class AgentAuthResolver {
 
   async resolve(workspaceId: string): Promise<AgentAuth> {
     const subscriptionToken = await this.deps.getSubscriptionToken(workspaceId);
-    return decideAgentAuth({ subscriptionToken });
+    return decideAgentAuth({ subscriptionToken, envApiKey: this.deps.getEnvApiKey?.() ?? null });
   }
 }
 

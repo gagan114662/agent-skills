@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { decideAgentAuth, harnessRequiresAuth } from "../../src/runtime/agent-auth.js";
 
-describe("decideAgentAuth (#68/#246 — subscription-ONLY, per-tenant)", () => {
+describe("decideAgentAuth (#68/#246/#1568 — subscription first, env API key fallback, per-tenant)", () => {
   it("uses the workspace subscription token when present", () => {
     const auth = decideAgentAuth({ subscriptionToken: "oauth-tok" });
     expect(auth).toEqual({
@@ -12,14 +12,36 @@ describe("decideAgentAuth (#68/#246 — subscription-ONLY, per-tenant)", () => {
     expect(auth.secrets).not.toHaveProperty("ANTHROPIC_API_KEY");
   });
 
-  it("#246: returns mode 'none' (NO API-key fallback) when the workspace has no token", () => {
+  it("returns mode 'none' when the workspace has no token and the deployment has no env key", () => {
     expect(decideAgentAuth({ subscriptionToken: null })).toEqual({
+      mode: "none",
+      secrets: {},
+    });
+    expect(decideAgentAuth({ subscriptionToken: null, envApiKey: null })).toEqual({
       mode: "none",
       secrets: {},
     });
   });
 
-  it("treats blank/whitespace tokens as absent (no auth) — never an API key", () => {
+  it("#1568: falls back to the deployment env ANTHROPIC_API_KEY when no subscription is connected", () => {
+    expect(decideAgentAuth({ subscriptionToken: null, envApiKey: "sk-ant-env" })).toEqual({
+      mode: "api_key",
+      secrets: { ANTHROPIC_API_KEY: "sk-ant-env" },
+    });
+    // Blank env keys never count as auth.
+    expect(decideAgentAuth({ subscriptionToken: null, envApiKey: "   " }).mode).toBe("none");
+  });
+
+  it("#1568: the workspace's own subscription token still WINS over the env key (per-tenant billing)", () => {
+    const auth = decideAgentAuth({ subscriptionToken: "oauth-tok", envApiKey: "sk-ant-env" });
+    expect(auth).toEqual({
+      mode: "subscription",
+      secrets: { CLAUDE_CODE_OAUTH_TOKEN: "oauth-tok" },
+    });
+    expect(auth.secrets).not.toHaveProperty("ANTHROPIC_API_KEY");
+  });
+
+  it("treats blank/whitespace tokens as absent (no auth)", () => {
     expect(decideAgentAuth({ subscriptionToken: "   " }).mode).toBe("none");
     expect(decideAgentAuth({ subscriptionToken: "" }).mode).toBe("none");
   });
