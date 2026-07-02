@@ -76,6 +76,32 @@ const fakeLauncher = {
           createdAt: new Date(0).toISOString(),
         }),
       });
+      await channelPoster.post({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        agentMemberId: input.agentMemberId,
+        body: encodeTeamEvent({
+          teamRunId: input.teamRunId,
+          subtaskId,
+          agentMemberId: input.agentMemberId,
+          kind: "milestone",
+          summary: "brand voice ready: ipop.ai",
+          branch: teamEventField(input.task, "branch"),
+          artifact: {
+            kind: "brand_voice",
+            schemaVersion: 1,
+            profile: {
+              toneAxes: ["plain over hype", "proof-led over vague"],
+              vocabularyDo: ["receipts", "approval-ready"],
+              vocabularyDont: ["guaranteed", "magic"],
+              sentenceRhythm: "Short setup, concrete payoff.",
+              exampleLines: ["Scout found the proof; Quill turns it into approval-ready drafts."],
+            },
+            sourceUrls: ["https://ipop.ai"],
+          },
+          createdAt: new Date(0).toISOString(),
+        }),
+      });
     }
     if (input.teamRunId && taskText.includes("produce the required draft_set artifact")) {
       const subtaskId = teamEventField(input.task, "subtaskId") ?? "quill";

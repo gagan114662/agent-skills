@@ -99,6 +99,28 @@ const scoutResearchEvent: TeamEvent = {
   },
 };
 
+const brandVoiceEvent: TeamEvent = {
+  teamRunId: "run_1",
+  subtaskId: "scout",
+  agentMemberId: "mem_scout",
+  kind: "milestone",
+  summary: "brand voice ready: acme.test",
+  branch: "b-scout",
+  createdAt: "2026-06-08T00:00:30.000Z",
+  artifact: {
+    kind: "brand_voice",
+    schemaVersion: 1,
+    profile: {
+      toneAxes: ["plain over hype", "proof-led over vague"],
+      vocabularyDo: ["audit trail", "receipts"],
+      vocabularyDont: ["guaranteed", "magic"],
+      sentenceRhythm: "Short setup, concrete payoff.",
+      exampleLines: ["Acme turns messy spreadsheet approvals into a clean audit trail."],
+    },
+    sourceUrls: ["https://acme.test"],
+  },
+};
+
 const draftSetEvent: TeamEvent = {
   teamRunId: "run_1",
   subtaskId: "quill",
@@ -366,6 +388,35 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(launcher.launched[0]?.task).toContain("research acme.test");
   });
 
+  it("adds brand voice profile instructions to Scout producer tasks (#1543)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "scout",
+          agentMemberId: "mem_scout",
+          task: "research acme.test",
+          branch: "b-scout",
+          producesArtifacts: ["scout_research", "brand_voice"],
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.task).toContain("brand_voice");
+    expect(launcher.launched[0]?.task).toContain("toneAxes");
+    expect(launcher.launched[0]?.task).toContain('"summary": "brand voice ready: <domain or target>"');
+  });
+
   it("adds channel-native draft validators to Quill producer tasks (#1541)", async () => {
     const launcher = new FakeLauncher();
     const { channel } = makeChannel();
@@ -398,6 +449,85 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(launcher.launched[0]?.task).toContain("google_rsa");
     expect(launcher.launched[0]?.task).toContain("subject <=45");
     expect(launcher.launched[0]?.task).toContain("draft channel-native assets");
+  });
+
+  it("blocks Quill before launch when the brand voice profile is missing (#1543)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel, events } = makeChannel();
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam({
+      ...runInput(1),
+      subtasks: [
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft channel-native assets",
+          branch: "b-quill",
+          requiresArtifacts: ["scout_research", "brand_voice"],
+          producesArtifacts: ["draft_set"],
+        },
+      ],
+    });
+
+    expect(launcher.launched).toHaveLength(0);
+    expect(result.results[0]).toMatchObject({
+      subtaskId: "quill",
+      ok: false,
+      error: "blocked: missing required artifact: Workspace brand voice profile",
+    });
+    expect(events().find((event) => event.kind === "blocked")?.summary).toBe(
+      "blocked: missing required artifact: Workspace brand voice profile",
+    );
+  });
+
+  it("injects brand voice into Quill and Lens tasks (#1543)", async () => {
+    const launcher = new FakeLauncher();
+    const { channel } = makeChannel();
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: scoutResearchEvent });
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: brandVoiceEvent });
+    await channel.postEvent({ workspaceId: "ws_1", channelId: "ch_1", event: draftSetEvent });
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 1,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    await coordinator.runTeam({
+      ...runInput(2),
+      subtasks: [
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft channel-native assets",
+          branch: "b-quill",
+          requiresArtifacts: ["scout_research", "brand_voice"],
+          producesArtifacts: ["draft_set"],
+        },
+        {
+          subtaskId: "lens",
+          agentMemberId: "mem_lens",
+          task: "score drafts against voice",
+          branch: "b-lens",
+          requiresArtifacts: ["scout_research", "brand_voice", "draft_set"],
+          producesArtifacts: ["lens_review"],
+        },
+      ],
+    });
+
+    expect(launcher.launched[0]?.task).toContain("brand_voice");
+    expect(launcher.launched[0]?.task).toContain("plain over hype");
+    expect(launcher.launched[1]?.task).toContain("brand_voice");
+    expect(launcher.launched[1]?.task).toContain("voiceConsistency");
   });
 
   it("does not mark a draft producer done until a valid draft_set is posted (#1541)", async () => {

@@ -80,6 +80,55 @@ describe("brand kit (#271) — set once, GET/PUT /me/brand-kit", () => {
     expect(after.json().connected).toBe(true);
     expect(after.json().brandKit.name).toBe("Acme");
   });
+
+  it("distills owner draft edits into a confirmed brand voice update (#1543)", async () => {
+    const { cookie } = await seed();
+    await app.inject({
+      method: "PUT",
+      url: "/me/brand-kit",
+      cookies: { rid: cookie },
+      payload: { name: "Acme", palette: ["#1a73e8"], voice: "Warm and concise." },
+    });
+
+    const suggest = await app.inject({
+      method: "POST",
+      url: "/me/brand-voice/learn",
+      cookies: { rid: cookie },
+      payload: {
+        originalDraft: "Guaranteed growth with magical automation!!!",
+        editedDraft: "Show the receipt: Scout found the gap, Quill drafted the first useful move.",
+        sourceUrls: ["https://acme.test"],
+      },
+    });
+    expect(suggest.statusCode).toBe(200);
+    expect(suggest.json()).toMatchObject({
+      applied: false,
+      activeBrandKit: true,
+      suggestion: {
+        confirmationRequired: true,
+        artifact: { kind: "brand_voice" },
+      },
+    });
+
+    const unchanged = await app.inject({ method: "GET", url: "/me/brand-kit", cookies: { rid: cookie } });
+    expect(unchanged.json().brandKit.voice).toBe("Warm and concise.");
+
+    const apply = await app.inject({
+      method: "POST",
+      url: "/me/brand-voice/learn",
+      cookies: { rid: cookie },
+      payload: {
+        originalDraft: "Guaranteed growth with magical automation!!!",
+        editedDraft: "Show the receipt: Scout found the gap, Quill drafted the first useful move.",
+        sourceUrls: ["https://acme.test"],
+        confirm: true,
+      },
+    });
+    expect(apply.statusCode).toBe(200);
+    expect(apply.json().applied).toBe(true);
+    expect(apply.json().brandKit.voice).toContain("Existing voice notes: Warm and concise.");
+    expect(apply.json().brandKit.voice).toContain("Avoid:");
+  });
 });
 
 describe("on-brand image generation (#271) — POST /me/realworld/generate-image", () => {

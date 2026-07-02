@@ -71,6 +71,48 @@ describe("team channel protocol (encode / tryParse)", () => {
     expect(tryParseTeamEvent(body)).toBeNull();
   });
 
+  it("round-trips a workspace brand voice profile artifact (#1543)", () => {
+    const event = sample({
+      artifact: {
+        kind: "brand_voice",
+        schemaVersion: 1,
+        profile: {
+          toneAxes: ["plain over hype", "proof-led over vague"],
+          vocabularyDo: ["receipts", "approval-ready"],
+          vocabularyDont: ["magic", "guaranteed"],
+          sentenceRhythm: "Short setup, concrete payoff.",
+          exampleLines: ["Scout found the proof; Quill turned it into drafts."],
+        },
+        sourceUrls: ["https://acme.test"],
+      },
+    });
+
+    expect(tryParseTeamEvent(encodeTeamEvent(event))).toEqual(event);
+  });
+
+  it("surfaces invalid brand voice profiles as blocked timeline events (#1543)", () => {
+    const body = TEAM_EVENT_MARKER + " " + JSON.stringify({
+      ...sample(),
+      artifact: {
+        kind: "brand_voice",
+        schemaVersion: 1,
+        profile: {
+          toneAxes: [],
+          vocabularyDo: ["receipts"],
+          vocabularyDont: ["guaranteed"],
+          sentenceRhythm: "Short setup, concrete payoff.",
+          exampleLines: ["Scout found the proof."],
+        },
+        sourceUrls: ["https://acme.test"],
+      },
+    });
+
+    expect(tryParseTeamEvent(body)).toMatchObject({
+      kind: "blocked",
+      summary: "blocked: invalid brand_voice artifact: brand_voice.profile.toneAxes: must include at least one item",
+    });
+  });
+
   it("round-trips a validated channel-native draft set (#1541)", () => {
     const event = sample({
       artifact: {

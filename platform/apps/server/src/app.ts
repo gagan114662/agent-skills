@@ -190,6 +190,7 @@ import { skilloptRoutes } from "./routes/skillopt.js";
 import { agentToolRoutes } from "./routes/agent-tools.js";
 import { departmentRoutes } from "./routes/department.js";
 import { brandKitRoutes } from "./routes/brand-kit.js";
+import { brandVoiceRoutes } from "./routes/brand-voice.js";
 import { createDefaultRealworldActuatorService } from "./realworld/default.js";
 import type { RealWorldActuatorService } from "./realworld/service.js";
 import { financeRoutes } from "./routes/finance.js";
@@ -1236,6 +1237,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // store. Setting a kit is what connects the founder-console brand proof tile. Image generation is a
   // fleet operating cost (autonomous, no #13 gate); it stays default-OFF behind the real-world flag.
   app.register(brandKitRoutes);
+  app.register(brandVoiceRoutes);
   // #189 acquisition execution: the email suppression list (read + manual add) + the signature-verified
   // ESP bounce/complaint webhook that keeps deliverability enforced in code. Default-OFF (the writes 409
   // until the workspace opts into acquisition email; the webhook secret lives in the #192 vault).

@@ -101,6 +101,7 @@ function uniqueArtifactKinds(kinds: readonly TeamArtifactKind[] | undefined): Te
 
 function artifactLabel(kind: TeamArtifactKind): string {
   if (kind === "scout_research") return "Scout research artifact";
+  if (kind === "brand_voice") return "Workspace brand voice profile";
   if (kind === "draft_set") return "Validated channel-native draft set";
   if (kind === "lens_review") return "Lens rubric review";
   return kind;
@@ -137,6 +138,32 @@ function artifactProductionInstructions(
       "    }",
       "  }",
     ].join("\n");
+    if (kind === "brand_voice") return [
+      "- brand_voice: post one valid team milestone event when the workspace voice profile is ready.",
+      "  Seed it from the customer's public site, owner brief, and any observed owner edits; do not invent a voice.",
+      "  The line must start with ::team-event:: followed by JSON with this exact shape:",
+      "  {",
+      '    "teamRunId": "' + input.teamRunId + '",',
+      '    "subtaskId": "' + subtask.subtaskId + '",',
+      '    "agentMemberId": "' + subtask.agentMemberId + '",',
+      '    "kind": "milestone",',
+      '    "summary": "brand voice ready: <domain or target>",',
+      '    "branch": "' + subtask.branch + '",',
+      '    "createdAt": "<current ISO timestamp>",',
+      '    "artifact": {',
+      '      "kind": "brand_voice",',
+      '      "schemaVersion": 1,',
+      '      "profile": {',
+      '        "toneAxes": ["<tone axis, e.g. plain over hype>"],',
+      '        "vocabularyDo": ["<words or phrasing to prefer>"],',
+      '        "vocabularyDont": ["<words or phrasing to avoid>"],',
+      '        "sentenceRhythm": "<short description of cadence and sentence length>",',
+      '        "exampleLines": ["<approved-sounding line in this voice>"]',
+      "      },",
+      '      "sourceUrls": ["<source URL or owner edit source used>"]',
+      "    }",
+      "  }",
+    ].join("\n");
     if (kind === "draft_set") return [
       "- draft_set: post one valid team milestone event when your channel-native drafts are ready.",
       "  The line must start with ::team-event:: followed by JSON with this exact envelope:",
@@ -162,7 +189,7 @@ function artifactProductionInstructions(
     ].join("\n");
     if (kind === "lens_review") return [
       "- lens_review: post one valid team milestone event when the rubric review is ready.",
-      "  Score every draft in the injected draft_set before any owner-visible handoff treats it as ready.",
+      "  Score every draft in the injected draft_set against the injected brand_voice profile before any owner-visible handoff treats it as ready.",
       "  The line must start with ::team-event:: followed by JSON with this exact envelope:",
       "  {",
       '    "teamRunId": "' + input.teamRunId + '",',
@@ -215,7 +242,7 @@ function artifactConsumptionInstructions(artifacts: readonly TeamArtifact[]): st
   return [
     "Required upstream team artifacts",
     "The coordinator validated these artifacts before launch. Use their concrete facts in the work product.",
-    "Every draft you produce must cite which proofPoints or sourceUrls it used; do not invent claims outside this JSON.",
+    "Every draft you produce must cite which proofPoints, sourceUrls, or brand_voice rules it used; do not invent claims outside this JSON.",
     JSON.stringify(artifacts, null, 2),
   ].join("\n");
 }
