@@ -148,6 +148,9 @@ export function DemoSandbox(props: DemoSandboxProps): React.JSX.Element {
     autoRanRef.current = true;
     setInput(seed);
     void build(seed);
+    return () => {
+      autoRanRef.current = false;
+    };
   }, [build, props.initialUrl]);
 
   // Paced reveal: once the plan lands, surface one section at a time so the build looks live. The whole
