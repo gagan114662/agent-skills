@@ -5,7 +5,7 @@ import { SUPPORT_CONTACT } from "../../brand.js";
 import { IPOP_PUBLIC_THEME } from "../../design/public-theme.js";
 import { APP_ROUTES } from "../../routing.js";
 import { FIRST_RUN_RECEIPT_KEY } from "./first-run-receipt.js";
-import { TELEGRAM_BOT_URL, WHATSAPP_URL } from "./messaging-entry.js";
+import { TELEGRAM_BOT_URL, WHATSAPP_URL, telegramDeepLink } from "./messaging-entry.js";
 import type {
   ConnectResult,
   ConnectTool,
@@ -198,9 +198,14 @@ describe("OnboardingExperience (#784)", () => {
       expect(screen.getByRole("button", { name: /open telegram/i })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: /^start$/i })).toHaveAttribute("href", TELEGRAM_BOT_URL);
 
+      // #1549: the typed brief must ride into Telegram as a ?start= payload — it is never discarded.
+      fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+        target: { value: "getfoolish.com" },
+      });
       fireEvent.click(screen.getByRole("button", { name: /open telegram/i }));
 
-      expect(assign).toHaveBeenCalledWith(TELEGRAM_BOT_URL);
+      expect(assign).toHaveBeenCalledWith(telegramDeepLink("getfoolish.com"));
+      expect(assign).not.toHaveBeenCalledWith(TELEGRAM_BOT_URL);
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
       expect(screen.queryByRole("complementary", { name: /ipop cowork room/i })).not.toBeInTheDocument();
     } finally {
@@ -349,7 +354,7 @@ describe("OnboardingExperience (#784)", () => {
       });
       fireEvent.click(screen.getByRole("button", { name: /open telegram/i }));
 
-      expect(assign).toHaveBeenCalledWith(TELEGRAM_BOT_URL);
+      expect(assign).toHaveBeenCalledWith(telegramDeepLink("acme.com"));
       expect(screen.queryByText(/lend us your gmail/i)).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^allow$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /skip for now/i })).not.toBeInTheDocument();
@@ -384,7 +389,7 @@ describe("OnboardingExperience (#784)", () => {
     expect(search.toLowerCase()).toMatch(/intent|reddit/);
   });
 
-  it("opens the selected messaging channel from the public door (#1521)", () => {
+  it("never dead-clicks a not-live channel — WhatsApp shows an honest note, no navigation (#1549)", () => {
     const originalLocation = window.location;
     const assign = vi.fn();
     Object.defineProperty(window, "location", {
@@ -395,11 +400,45 @@ describe("OnboardingExperience (#784)", () => {
     try {
       render(<OnboardingExperience provider={fakeProvider()} connectMode="workspace" hour={14} />);
 
-      fireEvent.click(screen.getByRole("button", { name: /whatsapp team thread/i }));
-      fireEvent.click(screen.getByRole("button", { name: /open whatsapp/i }));
+      // Picking a not-live channel flips the primary action to an honest "Notify me", not "Open WhatsApp".
+      fireEvent.click(screen.getByRole("button", { name: /whatsapp coming soon/i }));
+      expect(screen.queryByRole("button", { name: /open whatsapp/i })).not.toBeInTheDocument();
 
-      expect(assign).toHaveBeenCalledWith(WHATSAPP_URL);
-      expect(assign).not.toHaveBeenCalledWith(TELEGRAM_BOT_URL);
+      fireEvent.change(screen.getByLabelText(/what are we marketing today/i), {
+        target: { value: "acme.com" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /notify me/i }));
+
+      // No dead click to the generic wa.me/ page — instead an honest not-live note that steers to Telegram.
+      expect(assign).not.toHaveBeenCalledWith(WHATSAPP_URL);
+      expect(assign).not.toHaveBeenCalled();
+      expect(screen.getByRole("status")).toHaveTextContent(/aren't live yet/i);
+      expect(screen.getByRole("link", { name: /open telegram/i })).toHaveAttribute(
+        "href",
+        telegramDeepLink("acme.com"),
+      );
+    } finally {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
+  });
+
+  it("nudges (does not navigate) on an empty workspace-door submit (#1549)", () => {
+    const originalLocation = window.location;
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign },
+    });
+
+    try {
+      render(<OnboardingExperience provider={fakeProvider()} connectMode="workspace" hour={14} />);
+      fireEvent.click(screen.getByRole("button", { name: /open telegram/i }));
+
+      expect(assign).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent(/give us a product or a url/i);
     } finally {
       Object.defineProperty(window, "location", {
         configurable: true,
