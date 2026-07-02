@@ -40,6 +40,8 @@ import {
   partOfDay,
   signedDelta,
 } from "./everyday-data.js";
+import { CMO_SUMMARY_ENABLED } from "./cmo-summary-flag.js";
+import { type CmoSummary, type CmoSummaryMetric, resolveCmoSummary } from "./cmo-summary.js";
 
 export type EverydayDecisionStatus = "idle" | "pending" | "shipped" | "revision" | "error";
 
@@ -784,20 +786,81 @@ function connectorCtaLabel(connector: EverydayConnector): string {
   return connector.actionLabel;
 }
 
+/** Human label for a metric's provenance class — the honesty badge a CMO reads first. */
+function cmoProvenanceLabel(provenance: CmoSummaryMetric["provenance"]): string {
+  switch (provenance) {
+    case "receipt":
+      return "receipt";
+    case "blocked":
+      return "blocked — needs owner";
+    case "not_connected":
+      return "not connected yet";
+  }
+}
+
+/**
+ * The <10-second CMO top-summary strip (#1456). Six tiles answer the six CMO questions, and EVERY tile wears
+ * an honest provenance badge: a receipt-backed number, an honest "not connected yet", or a "blocked — needs
+ * owner". No tile renders a fabricated number (#200 §2). An upgrade/connect prompt appears only when real,
+ * receipt-backed value sits behind a blocked channel (#200 §5: tied to proven value, never arbitrary copy).
+ */
+function CmoSummaryStrip({ summary }: { summary: CmoSummary }): React.JSX.Element {
+  return (
+    <section className="everyday-cmo" aria-label="CMO summary">
+      <p className="everyday-eyebrow">CMO summary{summary.live ? "" : " · sample"}</p>
+      <ol className="everyday-cmo__grid">
+        {summary.metrics.map((metric) => (
+          <li key={metric.key} className="everyday-cmo__tile" data-provenance={metric.provenance}>
+            <span className="everyday-cmo__label">{metric.label}</span>
+            <strong className="everyday-cmo__value">{metric.value}</strong>
+            <small className="everyday-cmo__badge" data-provenance={metric.provenance}>
+              {cmoProvenanceLabel(metric.provenance)}
+            </small>
+            <em className="everyday-cmo__detail">{metric.detail}</em>
+            {metric.receiptHref ? (
+              <a className="everyday-cmo__receipt" href={metric.receiptHref}>
+                see receipt
+              </a>
+            ) : metric.needsOwner ? (
+              <b className="everyday-cmo__needs-owner">needs you</b>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+      {summary.upgradeMoment ? (
+        <div className="everyday-cmo__upgrade" role="note">
+          <span>{summary.upgradeMoment.reason}</span>
+          <strong>{summary.upgradeMoment.cta}</strong>
+          <em>{summary.upgradeMoment.proof}</em>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function WorkSummary({
   data,
   onConnectorConnect,
+  showCmoSummary,
 }: {
   data: EverydayData;
   onConnectorConnect?: (id: string) => void;
+  showCmoSummary: boolean;
 }): React.JSX.Element {
   const d = EVERYDAY.dashboard;
   const brief = data.marketingBrief ?? fallbackMarketingBrief(data);
   const latest = data.transparency.slice(-3).reverse();
   const seatUsage = starterSeatUsage(brief);
   const channelCta = onConnectorConnect ? dashboardConnectorCta(data.connectors) : null;
+  const cmoSummary = resolveCmoSummary({
+    live: brief.mode === "live",
+    connectors: data.connectors,
+    approvals: data.approvals,
+    receipts: data.transparency,
+  });
   return (
     <section id="dashboard" className="everyday-dashboard" aria-label={d.heading}>
+      {showCmoSummary ? <CmoSummaryStrip summary={cmoSummary} /> : null}
       <div className="everyday-dashboard__head">
         <div>
           <p className="everyday-dashboard__mode">{brief.mode === "sample" ? d.sample : d.live}</p>
@@ -1640,6 +1703,7 @@ export function EverydayShell({
   dashboardFirst = false,
   dashboardOnly = false,
   theme = "workspace",
+  showCmoSummary = CMO_SUMMARY_ENABLED,
 }: {
   data?: EverydayData;
   hour?: number;
@@ -1656,6 +1720,8 @@ export function EverydayShell({
   dashboardFirst?: boolean;
   dashboardOnly?: boolean;
   theme?: EverydayShellTheme;
+  /** Show the <10s CMO summary strip (#1456). Default follows the default-OFF owner-first flag. */
+  showCmoSummary?: boolean;
 }): React.JSX.Element {
   const [shipped, setShipped] = useState<readonly string[]>([]);
   const [statuses, setStatuses] = useState<Record<string, EverydayDecisionStatus>>({});
@@ -1760,7 +1826,11 @@ export function EverydayShell({
     <div className={shellClass} style={experienceTokenStyle(theme === "public" ? "everydayLight" : "everyday")}>
       <main className={dashboardOnly ? "everyday-shell__main everyday-shell__main--dashboard" : "everyday-shell__main"}>
         {dashboardFirst && (
-          <WorkSummary data={{ ...data, room, thread, approvals: pending }} onConnectorConnect={onConnectorConnect} />
+          <WorkSummary
+            data={{ ...data, room, thread, approvals: pending }}
+            onConnectorConnect={onConnectorConnect}
+            showCmoSummary={showCmoSummary}
+          />
         )}
         {!dashboardOnly && (
           <>
@@ -1774,7 +1844,11 @@ export function EverydayShell({
               imessageStatus={imessageStatus}
             />
             {!dashboardFirst && (
-              <WorkSummary data={{ ...data, room, thread, approvals: pending }} onConnectorConnect={onConnectorConnect} />
+              <WorkSummary
+                data={{ ...data, room, thread, approvals: pending }}
+                onConnectorConnect={onConnectorConnect}
+                showCmoSummary={showCmoSummary}
+              />
             )}
             <ConnectorSetup
               connectors={data.connectors}
