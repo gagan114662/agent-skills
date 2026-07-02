@@ -84,6 +84,11 @@ export function makeApprovalsFake(over: ApprovalFixtureOverrides = {}) {
       status: "rejected" as const,
       request: makeRequest({ id: rid, status: "rejected", reason }),
     })),
+    requestChanges: vi.fn(async (rid: string, note: string) => ({
+      status: "rejected" as const,
+      request: makeRequest({ id: rid, status: "rejected", reason: "Request changes: " + note }),
+      revisionMessage: { id: "msg-revision", channelId: "ch1" },
+    })),
     listPolicies: vi.fn(async (): Promise<ApprovalPolicyDto[]> => policies),
     upsertPolicy: vi.fn(async (_wid: string, input: { actionType: string }) =>
       makePolicy({ id: "new", actionType: input.actionType }),

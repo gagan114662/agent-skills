@@ -41,9 +41,24 @@ describe("store approvals slice", () => {
     await store.loadApprovals("pending");
     // After the decision, the backend no longer returns r1 as pending.
     approvals.setPending([makeRequest({ id: "r2" })]);
-    await store.decideApprove("r1", "ok");
+    await store.decideApprove("r1", "ok", { field: "draft", value: "edited" });
 
-    expect(approvals.approve).toHaveBeenCalledWith("r1", "ok");
+    expect(approvals.approve).toHaveBeenCalledWith("r1", "ok", { field: "draft", value: "edited" });
+    const s = store.getState().approvals;
+    expect(s.requests.map((r) => r.id)).toEqual(["r2"]);
+    expect(s.pendingCount).toBe(1);
+  });
+
+  it("request changes reconciles the pending queue and keeps the decision auditable", async () => {
+    const { store, approvals } = await ready({
+      pending: [makeRequest({ id: "r1" }), makeRequest({ id: "r2" })],
+    });
+    await store.loadApprovals("pending");
+    approvals.setPending([makeRequest({ id: "r2" })]);
+
+    await store.decideRequestChanges("r1", "make it sharper");
+
+    expect(approvals.requestChanges).toHaveBeenCalledWith("r1", "make it sharper");
     const s = store.getState().approvals;
     expect(s.requests.map((r) => r.id)).toEqual(["r2"]);
     expect(s.pendingCount).toBe(1);

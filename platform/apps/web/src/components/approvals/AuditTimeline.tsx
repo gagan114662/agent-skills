@@ -17,7 +17,19 @@ const LABEL: Record<ApprovalEventDto["type"], string> = {
 /** A short, human-readable detail line for an event (reason / error / result), if any. */
 function detailText(event: ApprovalEventDto): string | null {
   const d = event.detail;
-  if (typeof d.reason === "string" && d.reason) return d.reason;
+  const lines: string[] = [];
+  if (typeof d.reason === "string" && d.reason) lines.push(d.reason);
+  const edit = d.edit;
+  if (edit && typeof edit === "object" && !Array.isArray(edit)) {
+    const field = typeof (edit as { field?: unknown }).field === "string"
+      ? (edit as { field: string }).field
+      : "draft";
+    const distance = typeof (edit as { editDistance?: unknown }).editDistance === "number"
+      ? " (" + (edit as { editDistance: number }).editDistance + " edits)"
+      : "";
+    lines.push("Inline edit saved for " + field + distance + ".");
+  }
+  if (lines.length > 0) return lines.join("\n");
   if (typeof d.error === "string" && d.error) return d.error;
   const keys = Object.keys(d);
   return keys.length > 0 ? JSON.stringify(d) : null;

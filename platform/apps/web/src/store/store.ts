@@ -18,7 +18,7 @@ import type {
   RunState,
   SessionDiff,
 } from "@reload/shared";
-import type { api as realApi, AddReviewCommentInput, CreatePrInput } from "../api/client.js";
+import type { api as realApi, AddReviewCommentInput, ApprovalEditInput, CreatePrInput } from "../api/client.js";
 import { isApiUnavailable, isCapHit } from "../api/client.js";
 import type { Realtime } from "../api/realtime.js";
 import { loadWorkspaceSelection, saveWorkspaceSelection } from "../lib/workspace-selection.js";
@@ -355,8 +355,9 @@ export interface Store {
   loadApprovals(status?: ApprovalStatus): Promise<void>;
   openRequest(requestId: string): Promise<void>;
   closeRequest(): void;
-  decideApprove(requestId: string, reason?: string): Promise<void>;
+  decideApprove(requestId: string, reason?: string, edit?: ApprovalEditInput): Promise<void>;
   decideReject(requestId: string, reason: string): Promise<void>;
+  decideRequestChanges(requestId: string, note: string): Promise<void>;
   loadPolicies(): Promise<void>;
   addPolicy(input: { actionType: string; requireApproval?: boolean; maxAutoAmount?: number | null }): Promise<void>;
   removePolicy(ruleId: string): Promise<void>;
@@ -971,10 +972,11 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       setApprovals({ activeRequest: null, activeEvents: [] });
     },
 
-    async decideApprove(requestId, reason) {
+    async decideApprove(requestId, reason, edit) {
       let error: string | null = null;
       try {
-        await api.approvals.approve(requestId, reason);
+        if (edit) await api.approvals.approve(requestId, reason, edit);
+        else await api.approvals.approve(requestId, reason);
       } catch (e) {
         error = errMsg(e);
       }
@@ -987,6 +989,17 @@ export function createStore({ api, realtime }: StoreDeps): Store {
       let error: string | null = null;
       try {
         await api.approvals.reject(requestId, reason);
+      } catch (e) {
+        error = errMsg(e);
+      }
+      await reconcile(requestId);
+      if (error) setApprovals({ error });
+    },
+
+    async decideRequestChanges(requestId, note) {
+      let error: string | null = null;
+      try {
+        await api.approvals.requestChanges(requestId, note);
       } catch (e) {
         error = errMsg(e);
       }

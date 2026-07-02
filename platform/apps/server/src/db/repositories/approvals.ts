@@ -353,6 +353,16 @@ export async function approveAndLock(
     const nextPayload = edited
       ? { ...(current.payload as Record<string, unknown>), [edit!.field]: edit!.value }
       : undefined;
+    const approvedDetail: Record<string, unknown> = {};
+    if (reason) approvedDetail.reason = reason;
+    if (edit) {
+      approvedDetail.edit = {
+        field: edit.field,
+        original,
+        value: edit.value,
+        editDistance: editDist,
+      };
+    }
 
     const [row] = await tx
       .update(approvalRequests)
@@ -371,7 +381,7 @@ export async function approveAndLock(
       requestId,
       type: "approved",
       actorMemberId: deciderMemberId,
-      detail: reason ? { reason } : {},
+      detail: approvedDetail,
     });
     // #119: record the decision outcome as evidence in the SAME transaction as the #13 decision, so
     // the gate-pricing window can never drift from the audit log. ttd = decided − created.
