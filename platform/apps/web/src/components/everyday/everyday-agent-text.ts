@@ -43,7 +43,7 @@ const INTERNAL_TOOL_COMMAND_RE =
 // Runtime / log noise: Rust module paths (codex_core::shell_snapshot), a leading log level (optionally
 // after an ISO timestamp), Rust panics, or a bare shell-snapshot marker. Any of these is plumbing.
 const RUNTIME_LOG_RE =
-  /\b[a-z][a-z0-9_]*::[a-z][a-z0-9_]*|^\s*(?:\[?\d{4}-\d\d-\d\d[T ][\d:.]+Z?\]?\s+)?(?:ERROR|WARN(?:ING)?|DEBUG|TRACE|FATAL)\b|thread\s+'[^']*'\s+panicked|\bshell_snapshot\b/;
+  /\bcodex_[a-z0-9_]*::[a-z][a-z0-9_]*|^\s*(?:\[?\d{4}-\d\d-\d\d[T ][\d:.]+Z?\]?\s+)?(?:ERROR|WARN(?:ING)?|DEBUG|TRACE|FATAL)\b|thread\s+'[^']*'\s+panicked|\bshell_snapshot\b/;
 
 const TRIPLE_BACKTICK = String.fromCharCode(96).repeat(3);
 
