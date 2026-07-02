@@ -27,6 +27,7 @@ import type {
 export const TEAM_EVENT_MARKER = "::team-event::";
 
 const TEAM_EVENT_KINDS: readonly TeamEventKind[] = [
+  "queued",
   "started",
   "milestone",
   "blocked",
@@ -513,6 +514,7 @@ export function tryParseTeamEvent(body: string): TeamEvent | null {
     summary: e.summary,
     branch: e.branch as string | null,
     ...(artifactResult?.ok ? { artifact: artifactResult.artifact } : {}),
+    ...(isRecord(e.detail) ? { detail: e.detail } : {}),
     createdAt: e.createdAt,
   };
 }

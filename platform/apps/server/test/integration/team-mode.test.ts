@@ -208,6 +208,29 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
     expect(new Set(done.map((e) => e.branch))).toEqual(
       new Set(["feat/part-0", "feat/part-1", "feat/part-2"]),
     );
+
+    const timeline = await app.inject({
+      method: "GET",
+      url: `/channels/${w.channelId}/team-runs/${body.teamRunId}/timeline`,
+      cookies: { rid: w.cookie },
+    });
+    expect(timeline.statusCode).toBe(200);
+    expect(timeline.json()).toMatchObject({
+      teamRunId: body.teamRunId,
+      state: "done",
+      subtaskCount: 3,
+      counts: { done: 3 },
+    });
+    expect(timeline.json().subtasks).toHaveLength(3);
+    expect(timeline.json().subtasks[0]).toMatchObject({
+      state: "done",
+      attempts: 1,
+      input: {
+        maxAttempts: 2,
+        timeoutMs: 30 * 60 * 1000,
+      },
+    });
+    expect(typeof timeline.json().subtasks[0].durationMs).toBe("number");
   });
 
   it("rejects a subtask whose agent is not an agent member of this workspace (IDOR)", async () => {
@@ -237,7 +260,21 @@ describe("Team Mode (real Postgres + Redis, LocalRuntime, no cloud)", () => {
   });
 
   it("fails closed when the room requests Codex without a connected subscription (#1282)", async () => {
-    const { app } = await startApp(2);
+    const disconnectedCodex: CodexSubscriptionStatusProvider = {
+      async status() {
+        return {
+          connected: false,
+          reason: "The team engine is not connected to this workspace's signed-in subscription yet.",
+          selectedHarness: "codex",
+          userAuthenticated: true,
+          workspaceAuthenticated: true,
+          runtimeAuth: "missing",
+          fallback: "none",
+          apiKeySatisfies: false,
+        };
+      },
+    };
+    const { app } = await startApp(2, disconnectedCodex);
     const w = await seed(app, 1);
 
     const status = await app.inject({

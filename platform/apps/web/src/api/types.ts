@@ -546,6 +546,8 @@ export interface TeamRunSubtaskInput {
   task: string;
   branch: string;
   phase?: number;
+  timeoutMs?: number;
+  maxAttempts?: number;
   producesArtifacts?: TeamArtifactKind[];
   requiresArtifacts?: TeamArtifactKind[];
   harness?: TeamRunHarness;
@@ -559,9 +561,54 @@ export interface TeamRunResponse {
     agentMemberId: string;
     branch: string;
     phase?: number;
+    timeoutMs: number;
+    maxAttempts: number;
     producesArtifacts: TeamArtifactKind[];
     requiresArtifacts: TeamArtifactKind[];
     harness: TeamRunHarness | null;
+  }>;
+}
+
+export type TeamTimelineState = "queued" | "running" | "done" | "failed" | "skipped";
+
+export interface TeamRunTimeline {
+  teamRunId: string;
+  state: TeamTimelineState;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  subtaskCount: number;
+  counts: Record<TeamTimelineState, number>;
+  subtasks: Array<{
+    subtaskId: string;
+    agentMemberId: string;
+    branch: string | null;
+    state: TeamTimelineState;
+    input: {
+      task: string | null;
+      phase: number;
+      producesArtifacts: TeamArtifactKind[];
+      requiresArtifacts: TeamArtifactKind[];
+      harness: TeamRunHarness | null;
+      timeoutMs: number | null;
+      maxAttempts: number;
+    };
+    attempts: number;
+    sessionIds: string[];
+    artifactKinds: TeamArtifactKind[];
+    startedAt: string | null;
+    finishedAt: string | null;
+    durationMs: number | null;
+    reason: string | null;
+    events: unknown[];
+  }>;
+  alerts: Array<{
+    kind: "dead_run";
+    subtaskId: string;
+    state: TeamTimelineState;
+    reason: string;
+    blockedForMs: number;
+    pageOwner: true;
   }>;
 }
 

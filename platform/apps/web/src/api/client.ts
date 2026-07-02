@@ -99,6 +99,7 @@ import type {
   SiteDocDetail,
   SiteDocMeta,
   TeamRunResponse,
+  TeamRunTimeline,
   TeamRunSubtaskInput,
   CodexSubscriptionStatus,
   ThreadView,
@@ -736,6 +737,9 @@ export const api = {
   },
   launchTeamRun(channelId: string, subtasks: TeamRunSubtaskInput[]): Promise<TeamRunResponse> {
     return post(`/channels/${channelId}/team-runs`, { subtasks }) as Promise<TeamRunResponse>;
+  },
+  getTeamRunTimeline(channelId: string, teamRunId: string): Promise<TeamRunTimeline> {
+    return request<TeamRunTimeline>(`/channels/${channelId}/team-runs/${teamRunId}/timeline`);
   },
   getCodexStatus(): Promise<CodexSubscriptionStatus> {
     return request<CodexSubscriptionStatus>("/me/codex/status");
