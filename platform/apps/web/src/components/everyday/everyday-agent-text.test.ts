@@ -124,6 +124,27 @@ describe("everyday-agent-text — session terminal + noise", () => {
     expect(scrubInternalJargon("failed _(spawn)_ 019eb7aa-1111-2222-3333-444455556666")).toBe("failed");
   });
 
+  it("does not corrupt a URL that contains a UUID or a Vercel preview host (Gemini #1589)", () => {
+    // A Vercel preview host embeds a branch-like token; a preview path can embed a UUID. Both must survive.
+    expect(scrubInternalJargon("shipped to https://ipop-preview-abc123.vercel.app (exit 0)")).toBe(
+      "shipped to https://ipop-preview-abc123.vercel.app",
+    );
+    const withUuid = "see https://example.com/019eb7aa-1111-2222-3333-444455556666/report _(spawn)_";
+    expect(scrubInternalJargon(withUuid)).toBe(
+      "see https://example.com/019eb7aa-1111-2222-3333-444455556666/report",
+    );
+    // A bare token outside any URL is still stripped, so real telemetry never leaks.
+    expect(scrubInternalJargon("branch ipop-echo-launch had 019eb7aa-1111-2222-3333-444455556666")).toBe(
+      "branch had",
+    );
+    // And it holds through the failure-line rewrite a customer actually sees.
+    const failure =
+      "❌ I couldn't reach the preview at https://ipop-echo-launch.vercel.app _(error)_\n`session failed · exit n/a`";
+    const out = customerVisibleAgentText(failure);
+    expect(out).toContain("https://ipop-echo-launch.vercel.app");
+    expect(out).not.toMatch(/exit|_\(error\)_|❌/);
+  });
+
   it("still shows a genuine agent one-liner untouched (not lifecycle-prefixed)", () => {
     const out = customerVisibleAgentText(teamEvent({ summary: "reading your homepage" }));
     expect(out).toBe("reading your homepage");

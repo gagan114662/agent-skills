@@ -234,12 +234,25 @@ export function teamEventFriendlyLine(event: TeamEvent): string {
 /**
  * Strip pipeline jargon a customer must never see (rule 4): exit codes, `session … · exit …` footers,
  * failure class tags like `_(spawn)_`, UUIDs, and worktree branch tokens. Whitespace is re-collapsed.
- * Deliberately narrow so genuine copy that merely contains a normal word is left intact.
+ * Deliberately narrow so genuine copy that merely contains a normal word is left intact. URLs are masked
+ * before scrubbing so a real link that happens to contain a UUID path segment or a Vercel preview host
+ * (`https://ipop-preview-abc.vercel.app`) survives intact rather than being mangled to `https://.vercel.app`.
  */
+const URL_RE = /https?:\/\/[^\s)]+/gi;
+// A private-use-area sentinel that cannot occur in real agent text, so a masked URL never collides with
+// (or is mangled by) the scrub regexes or a legitimate number elsewhere in the line.
+const URL_SENTINEL = String.fromCharCode(0xf8ff);
+const URL_PLACEHOLDER_RE = new RegExp(URL_SENTINEL + "(\\d+)" + URL_SENTINEL, "g");
+
 export function scrubInternalJargon(text: string): string {
-  return text
-    .replace(/`[^`]*\bsession\b[^`]*·\s*exit[^`]*`/gi, "") // `session failed · exit n/a`
-    .replace(/\bsession\s+\w+\s*·\s*exit\s+(?:\d+|n\/a)/gi, "")
+  const urls: string[] = [];
+  const masked = text.replace(URL_RE, (url) => {
+    urls.push(url);
+    return URL_SENTINEL + String(urls.length - 1) + URL_SENTINEL;
+  });
+  const scrubbed = masked
+    .replace(/`[^`]*\bsession\b[^`]*\u00b7\s*exit[^`]*`/gi, "") // `session failed \u00b7 exit n/a`
+    .replace(/\bsession\s+\w+\s*\u00b7\s*exit\s+(?:\d+|n\/a)/gi, "")
     .replace(/\(?\bexit\s+(?:code\s+)?(?:\d+|n\/a)\)?/gi, "") // "(exit 0)", "exit n/a"
     .replace(/_\([a-z]+\)_/gi, "") // "_(spawn)_"
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "") // UUID
@@ -247,6 +260,7 @@ export function scrubInternalJargon(text: string): string {
     .replace(/\s{2,}/g, " ")
     .replace(/\s+([.,;:])/g, "$1")
     .trim();
+  return scrubbed.replace(URL_PLACEHOLDER_RE, (_match, index: string) => urls[Number(index)] ?? "");
 }
 
 /** True when a raw body is a tool invocation or runtime/log line that must never reach a customer. */
