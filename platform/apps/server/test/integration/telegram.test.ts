@@ -39,21 +39,28 @@ const silentLogger: SessionLogger = {
   error: () => {},
 };
 
+function teamEventField(task: string, field: "subtaskId" | "branch"): string | null {
+  const match = new RegExp('"' + field + '": "([^"]+)"').exec(task);
+  return match?.[1] ?? null;
+}
+
 const fakeLauncher = {
   launch: vi.fn(async (input: LaunchInput) => {
     teamLaunches.push(input);
-    if (input.teamRunId && input.task.includes("Required team artifact production contract")) {
+    const taskText = input.task.toLowerCase();
+    if (input.teamRunId && taskText.includes("research artifact ready: <domain or target>")) {
+      const subtaskId = teamEventField(input.task, "subtaskId") ?? "scout";
       await channelPoster.post({
         workspaceId: input.workspaceId,
         channelId: input.channelId,
         agentMemberId: input.agentMemberId,
         body: encodeTeamEvent({
           teamRunId: input.teamRunId,
-          subtaskId: "scout",
+          subtaskId,
           agentMemberId: input.agentMemberId,
           kind: "milestone",
           summary: "research artifact ready: ipop.ai",
-          branch: null,
+          branch: teamEventField(input.task, "branch"),
           artifact: {
             kind: "scout_research",
             schemaVersion: 1,
@@ -64,6 +71,76 @@ const fakeLauncher = {
             competitors: ["agency retainer", "generic chatbot"],
             toneNotes: "Plain, direct, slightly playful.",
             sourceUrls: ["https://ipop.ai"],
+          },
+          createdAt: new Date(0).toISOString(),
+        }),
+      });
+    }
+    if (input.teamRunId && taskText.includes("produce the required draft_set artifact")) {
+      const subtaskId = teamEventField(input.task, "subtaskId") ?? "quill";
+      await channelPoster.post({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        agentMemberId: input.agentMemberId,
+        body: encodeTeamEvent({
+          teamRunId: input.teamRunId,
+          subtaskId,
+          agentMemberId: input.agentMemberId,
+          kind: "milestone",
+          summary: "draft set ready: ipop.ai",
+          branch: teamEventField(input.task, "branch"),
+          artifact: {
+            kind: "draft_set",
+            schemaVersion: 1,
+            drafts: [
+              {
+                format: "google_rsa",
+                title: "Search ads",
+                fields: {
+                  headlines: Array.from({ length: 15 }, (_, i) => "Proof ad " + (i + 1)),
+                  descriptions: Array.from({ length: 4 }, (_, i) => "Proof-led message for channel " + (i + 1)),
+                },
+                citations: ["Homepage says marketing team in your messages"],
+              },
+              {
+                format: "email",
+                title: "Welcome email",
+                fields: {
+                  subject: "Your marketing room is ready",
+                  preheader: "Scout found the first useful move.",
+                  body: "Here is the first draft for review.",
+                  cta: "Review the draft",
+                  plainTextAlt: "Review the first draft in ipop.",
+                },
+                citations: ["Homepage says marketing team in your messages"],
+              },
+              {
+                format: "landing_hero",
+                title: "Homepage hero",
+                fields: {
+                  headline: "Marketing work, visible in messages",
+                  subhead: "Scout researches, Quill drafts, and every send waits for your approval.",
+                  cta: "Start the room",
+                },
+                citations: ["Homepage says marketing team in your messages"],
+              },
+              {
+                format: "seo_snippet",
+                title: "SEO snippet",
+                fields: {
+                  title: "AI marketing team in your messages",
+                  metaDescription: "AI teammates research your site, draft channel-ready marketing work, and keep every send or spend behind approval while you watch progress in messages.",
+                  intent: "brand-aware marketing team software",
+                },
+                citations: ["Homepage says marketing team in your messages"],
+              },
+              {
+                format: "x_thread",
+                title: "X thread",
+                fields: { tweets: ["Your marketing team should show its work.", "Scout researches, Quill drafts, and you approve before anything ships."] },
+                citations: ["Room names Scout, Quill, Echo, and Bid"],
+              },
+            ],
           },
           createdAt: new Date(0).toISOString(),
         }),

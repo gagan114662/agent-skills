@@ -539,7 +539,7 @@ export interface AgentProfile {
 }
 
 export type TeamRunHarness = "demo" | "claude-code" | "codex";
-export type TeamArtifactKind = "scout_research";
+export type TeamArtifactKind = "scout_research" | "draft_set";
 
 export interface TeamRunSubtaskInput {
   agentMemberId: string;

@@ -136,6 +136,7 @@ function buildSubtask(handle: (typeof LAUNCH_HANDLES)[number], agentMemberId: st
     branch: "messaging-" + handle + "-" + newId().slice(0, 8),
     phase: PHASE_BY_HANDLE[handle],
     ...(handle === "scout" ? { producesArtifacts: ["scout_research" as const] } : {}),
+    ...(handle === "quill" ? { producesArtifacts: ["draft_set" as const] } : {}),
     ...(handle === "quill" || handle === "echo" || handle === "bid"
       ? { requiresArtifacts: ["scout_research" as const] }
       : {}),
@@ -152,7 +153,9 @@ function buildSubtask(handle: (typeof LAUNCH_HANDLES)[number], agentMemberId: st
       "and keep anything that sends, posts, publishes, or spends behind human approval.\n\n" +
       (handle === "scout"
         ? "Before this lane is done, produce the required scout_research artifact with siteSummary, ICP, positioning, proof points, competitors, tone notes, and source URLs.\n\n"
-        : "Use the validated scout_research artifact injected by the coordinator; cite artifact proofPoints or sourceUrls in any draft or recommendation.\n\n") +
+        : handle === "quill"
+          ? "Use the validated scout_research artifact injected by the coordinator; produce the required draft_set artifact with channel-native formats that pass validation, and cite proofPoints or sourceUrls in every draft.\n\n"
+          : "Use the validated scout_research artifact injected by the coordinator; cite artifact proofPoints or sourceUrls in any draft or recommendation.\n\n") +
       "Owner brief: " +
       objective,
   };

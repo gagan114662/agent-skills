@@ -131,7 +131,7 @@ export interface PolicySimulationResult {
 export type TeamEventKind = "started" | "milestone" | "blocked" | "needs_handoff" | "done";
 
 /** Typed artifacts teammates can hand off during a team run. */
-export type TeamArtifactKind = "scout_research";
+export type TeamArtifactKind = "scout_research" | "draft_set";
 
 /**
  * Scout's research handoff for downstream writers. This is intentionally compact enough to fit in a
@@ -149,7 +149,178 @@ export interface ScoutResearchArtifact {
   sourceUrls: string[];
 }
 
-export type TeamArtifact = ScoutResearchArtifact;
+/** The first channel-native formats Quill can hand off to Lens/owner review. */
+export type MarketingDraftFormat =
+  | "google_rsa"
+  | "meta_ad"
+  | "linkedin_post"
+  | "x_thread"
+  | "email"
+  | "landing_hero"
+  | "seo_snippet";
+
+export interface MarketingDraft {
+  format: MarketingDraftFormat;
+  title: string;
+  fields: Record<string, string | string[]>;
+  /** Scout proof points or source URLs used by this draft. */
+  citations: string[];
+}
+
+/** A validated bundle of channel-native drafts from Quill. */
+export interface DraftSetArtifact {
+  kind: "draft_set";
+  schemaVersion: 1;
+  drafts: MarketingDraft[];
+}
+
+export type TeamArtifact = ScoutResearchArtifact | DraftSetArtifact;
+
+export interface DraftValidationIssue {
+  format: MarketingDraftFormat;
+  title: string;
+  field: string;
+  message: string;
+}
+
+const SPAM_TRIGGER_RE = /\b(?:free money|guaranteed|risk-free|act now|limited time|winner|cash bonus)\b/i;
+
+function strings(value: string | string[] | undefined): string[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function stringValue(value: string | string[] | undefined): string {
+  return typeof value === "string" ? value : "";
+}
+
+function pushRequired(
+  issues: DraftValidationIssue[],
+  draft: MarketingDraft,
+  field: string,
+  value: string | string[] | undefined,
+): void {
+  if (typeof value === "string" && value.trim()) return;
+  if (Array.isArray(value) && value.some((item) => item.trim())) return;
+  issues.push({ format: draft.format, title: draft.title, field, message: "required" });
+}
+
+function pushMax(
+  issues: DraftValidationIssue[],
+  draft: MarketingDraft,
+  field: string,
+  value: string,
+  max: number,
+): void {
+  if (value.length <= max) return;
+  issues.push({
+    format: draft.format,
+    title: draft.title,
+    field,
+    message: "must be " + max + " characters or fewer",
+  });
+}
+
+function validateGoogleRsa(draft: MarketingDraft, issues: DraftValidationIssue[]): void {
+  const headlines = strings(draft.fields.headlines);
+  const descriptions = strings(draft.fields.descriptions);
+  if (headlines.length !== 15) {
+    issues.push({ format: draft.format, title: draft.title, field: "headlines", message: "must include exactly 15 headlines" });
+  }
+  if (descriptions.length !== 4) {
+    issues.push({ format: draft.format, title: draft.title, field: "descriptions", message: "must include exactly 4 descriptions" });
+  }
+  headlines.forEach((headline, index) => pushMax(issues, draft, "headlines[" + index + "]", headline, 30));
+  descriptions.forEach((description, index) => pushMax(issues, draft, "descriptions[" + index + "]", description, 90));
+}
+
+function validateSocialAd(draft: MarketingDraft, issues: DraftValidationIssue[]): void {
+  pushRequired(issues, draft, "hook", draft.fields.hook);
+  pushRequired(issues, draft, "body", draft.fields.body);
+  pushRequired(issues, draft, "cta", draft.fields.cta);
+  pushMax(issues, draft, "hook", stringValue(draft.fields.hook), 125);
+  pushMax(issues, draft, "headline", stringValue(draft.fields.headline), 40);
+  pushMax(issues, draft, "description", stringValue(draft.fields.description), 30);
+}
+
+function validateLinkedInPost(draft: MarketingDraft, issues: DraftValidationIssue[]): void {
+  pushRequired(issues, draft, "hook", draft.fields.hook);
+  pushRequired(issues, draft, "body", draft.fields.body);
+  pushMax(issues, draft, "hook", stringValue(draft.fields.hook), 180);
+  pushMax(issues, draft, "cta", stringValue(draft.fields.cta), 120);
+}
+
+function validateXThread(draft: MarketingDraft, issues: DraftValidationIssue[]): void {
+  const tweets = strings(draft.fields.tweets);
+  if (tweets.length < 2 || tweets.length > 8) {
+    issues.push({ format: draft.format, title: draft.title, field: "tweets", message: "must include 2 to 8 tweets" });
+  }
+  tweets.forEach((tweet, index) => pushMax(issues, draft, "tweets[" + index + "]", tweet, 280));
+}
+
+function validateEmail(draft: MarketingDraft, issues: DraftValidationIssue[]): void {
+  pushRequired(issues, draft, "subject", draft.fields.subject);
+  pushRequired(issues, draft, "preheader", draft.fields.preheader);
+  pushRequired(issues, draft, "body", draft.fields.body);
+  pushRequired(issues, draft, "cta", draft.fields.cta);
+  pushRequired(issues, draft, "plainTextAlt", draft.fields.plainTextAlt);
+  pushMax(issues, draft, "subject", stringValue(draft.fields.subject), 45);
+  pushMax(issues, draft, "preheader", stringValue(draft.fields.preheader), 90);
+  const emailText = [draft.fields.subject, draft.fields.preheader, draft.fields.body].map(stringValue).join(" ");
+  if (SPAM_TRIGGER_RE.test(emailText)) {
+    issues.push({ format: draft.format, title: draft.title, field: "body", message: "contains spam-trigger phrasing" });
+  }
+}
+
+function validateLandingHero(draft: MarketingDraft, issues: DraftValidationIssue[]): void {
+  pushRequired(issues, draft, "headline", draft.fields.headline);
+  pushRequired(issues, draft, "subhead", draft.fields.subhead);
+  pushRequired(issues, draft, "cta", draft.fields.cta);
+  pushMax(issues, draft, "headline", stringValue(draft.fields.headline), 70);
+  pushMax(issues, draft, "subhead", stringValue(draft.fields.subhead), 160);
+  pushMax(issues, draft, "cta", stringValue(draft.fields.cta), 30);
+}
+
+function validateSeoSnippet(draft: MarketingDraft, issues: DraftValidationIssue[]): void {
+  pushRequired(issues, draft, "title", draft.fields.title);
+  pushRequired(issues, draft, "metaDescription", draft.fields.metaDescription);
+  pushRequired(issues, draft, "intent", draft.fields.intent);
+  pushMax(issues, draft, "title", stringValue(draft.fields.title), 60);
+  const meta = stringValue(draft.fields.metaDescription);
+  if (meta.length < 150 || meta.length > 160) {
+    issues.push({
+      format: draft.format,
+      title: draft.title,
+      field: "metaDescription",
+      message: "must be 150 to 160 characters",
+    });
+  }
+}
+
+export function validateMarketingDraft(draft: MarketingDraft): DraftValidationIssue[] {
+  const issues: DraftValidationIssue[] = [];
+  if (!draft.title.trim()) {
+    issues.push({ format: draft.format, title: draft.title, field: "title", message: "required" });
+  }
+  if (draft.citations.length === 0) {
+    issues.push({ format: draft.format, title: draft.title, field: "citations", message: "must cite Scout proofPoints or sourceUrls" });
+  }
+  if (draft.format === "google_rsa") validateGoogleRsa(draft, issues);
+  else if (draft.format === "meta_ad") validateSocialAd(draft, issues);
+  else if (draft.format === "linkedin_post") validateLinkedInPost(draft, issues);
+  else if (draft.format === "x_thread") validateXThread(draft, issues);
+  else if (draft.format === "email") validateEmail(draft, issues);
+  else if (draft.format === "landing_hero") validateLandingHero(draft, issues);
+  else if (draft.format === "seo_snippet") validateSeoSnippet(draft, issues);
+  return issues;
+}
+
+export function validateDraftSetArtifact(artifact: DraftSetArtifact): DraftValidationIssue[] {
+  const issues = artifact.drafts.flatMap(validateMarketingDraft);
+  if (artifact.drafts.length === 0) {
+    issues.push({ format: "email", title: "draft_set", field: "drafts", message: "must include at least one draft" });
+  }
+  return issues;
+}
 
 /** One structured status event on a team run's channel. */
 export interface TeamEvent {
