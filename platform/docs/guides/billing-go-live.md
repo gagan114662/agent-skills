@@ -14,15 +14,24 @@ Two orthogonal switches:
 
 | Env var            | Values            | Default | Meaning                                              |
 | ------------------ | ----------------- | ------- | ---------------------------------------------------- |
-| `BILLING_PROVIDER` | `none` \| `stripe`| `none`  | Which backend collects money (`none` = no network).  |
-| `BILLING_MODE`     | `test` \| `live`  | `test`  | Declared intent. Only `live` takes real money.       |
+| `BILLING_PROVIDER`        | `none` \| `stripe`| `none`  | Which backend collects money (`none` = no network).             |
+| `BILLING_MODE`            | `test` \| `live`  | `test`  | Declared intent. Only `live` takes real money.                  |
+| `BILLING_PREFLIGHT_STRICT`| `true` \| `1`     | OFF     | #1510: also assert key/mode consistency at **boot** (see below). |
 
 Real money is on **iff** `BILLING_PROVIDER=stripe` **and** `BILLING_MODE=live`. The Stripe adapter asserts
 the supplied key's prefix matches `BILLING_MODE` **before** any network call and **fails closed** on a
 mismatch (`BillingModeMismatchError`):
 
-- `BILLING_MODE=live` + a `sk_test_…` key → refuses to start (would silently take **no** real money).
-- `BILLING_MODE=test` + a `sk_live_…` key → refuses to start (would charge **real** cards).
+- `BILLING_MODE=live` + a `sk_test_…` key → refuses the charge (would silently take **no** real money).
+- `BILLING_MODE=test` + a `sk_live_…` key → refuses the charge (would charge **real** cards).
+
+**#1510 — catch the mismatch at boot, not one buyer at a time.** By default that guard fires only
+*per-request*: a `sk_live_…` key with `BILLING_MODE` unset (→ `test`) boots cleanly and then returns a 502
+on **every** checkout — a silent revenue outage. Set `BILLING_PREFLIGHT_STRICT=true` on the production
+deployment so the startup preflight asserts the same key/mode consistency and **fails the boot** with the
+actionable message (the machine never reaches `/readyz`, the deploy rolls back, you get paged) instead of
+letting customers hit opaque checkout failures. Default OFF so no existing environment changes behavior; the
+owner opts in deliberately. See [ADR-1510](../adrs/1510-billing-startup-preflight.md).
 
 The `GET /workspaces/:wid/billing/status` endpoint returns `{ provider, mode, live }`, and the
 Settings → Billing panel renders the real state — "Live — real payments are on" vs "Test mode".
@@ -45,6 +54,7 @@ Settings → Billing panel renders the real state — "Live — real payments ar
 # 1. Live key material (names only live in the repo; values live only in host secrets).
 fly secrets set STRIPE_SECRET_KEY=sk_live_…    --app reload-api
 fly secrets set STRIPE_WEBHOOK_SECRET=whsec_…  --app reload-api   # the LIVE webhook signing secret
+fly secrets set BILLING_PREFLIGHT_STRICT=true  --app reload-api   # #1510: fail boot on a key/mode mismatch
 
 # 2. Turn the rails on and declare go-live.
 fly secrets set BILLING_PROVIDER=stripe         --app reload-api

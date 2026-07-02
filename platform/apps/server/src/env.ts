@@ -197,6 +197,14 @@ export interface BillingEnv {
    * (Stripe's recommendation).
    */
   webhookToleranceSeconds: number;
+  /**
+   * #1510 hardening. When true, the startup preflight ALSO asserts the `STRIPE_SECRET_KEY`'s prefix mode
+   * matches the declared `BILLING_MODE` — promoting a mismatch (e.g. a `sk_live_…` key while `BILLING_MODE`
+   * is unset → `test`) from a silent per-request checkout 502 to a LOUD, actionable boot failure. Optional
+   * and defaults `false` (OFF): existing deploys are byte-for-byte unchanged. The owner opts in on the
+   * production (owner) deployment. Env: `BILLING_PREFLIGHT_STRICT=true|1`.
+   */
+  preflightStrict?: boolean;
 }
 
 export interface GitEnv {
@@ -770,6 +778,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       mode: source.BILLING_MODE === "live" ? "live" : "test",
       // Stripe's recommended webhook replay window (seconds).
       webhookToleranceSeconds: num(source.BILLING_WEBHOOK_TOLERANCE_SECONDS, 300),
+      // #1510: strict startup mode/key preflight. Default OFF — only the exact strings `true`/`1` opt in.
+      preflightStrict: flag(source.BILLING_PREFLIGHT_STRICT),
     },
     autoModel: {
       // Default off (master switch). Even when on, an absent LLM_GATEWAY_URL keeps the feature off

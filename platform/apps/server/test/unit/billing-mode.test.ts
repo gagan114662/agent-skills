@@ -3,6 +3,7 @@ import {
   assertKeyMatchesMode,
   billingStatus,
   BillingModeMismatchError,
+  diagnoseBillingConfig,
   stripeKeyMode,
 } from "../../src/billing/mode.js";
 
@@ -65,6 +66,52 @@ describe("billing mode (#481 — test/live key validation)", () => {
       // A custom/unrecognised prefix can't be classified; don't false-positive — Stripe rejects a bad key.
       expect(() => assertKeyMatchesMode("live", "custom_opaque_key")).not.toThrow();
       expect(() => assertKeyMatchesMode("live", "")).not.toThrow();
+    });
+  });
+
+  describe("diagnoseBillingConfig (#1510 — startup config classifier)", () => {
+    it("is ok for the none provider regardless of mode/key (can never charge)", () => {
+      expect(
+        diagnoseBillingConfig({ provider: "none", mode: "test", keyMode: "unknown", hasKey: false }),
+      ).toBe("ok");
+      expect(
+        diagnoseBillingConfig({ provider: "none", mode: "live", keyMode: "live", hasKey: true }),
+      ).toBe("ok");
+    });
+
+    it("flags missing_key when stripe is selected but no key is present", () => {
+      expect(
+        diagnoseBillingConfig({ provider: "stripe", mode: "test", keyMode: "unknown", hasKey: false }),
+      ).toBe("missing_key");
+    });
+
+    it("flags mode_key_mismatch for a LIVE key while mode is test (the #1510 revenue outage)", () => {
+      // BILLING_MODE unset → parsed as `test`; a real sk_live_ key present → every checkout would 502.
+      expect(
+        diagnoseBillingConfig({ provider: "stripe", mode: "test", keyMode: "live", hasKey: true }),
+      ).toBe("mode_key_mismatch");
+    });
+
+    it("flags mode_key_mismatch for a TEST key while mode is live (silent zero real revenue)", () => {
+      expect(
+        diagnoseBillingConfig({ provider: "stripe", mode: "live", keyMode: "test", hasKey: true }),
+      ).toBe("mode_key_mismatch");
+    });
+
+    it("is ok when the key's mode matches the declared mode", () => {
+      expect(
+        diagnoseBillingConfig({ provider: "stripe", mode: "live", keyMode: "live", hasKey: true }),
+      ).toBe("ok");
+      expect(
+        diagnoseBillingConfig({ provider: "stripe", mode: "test", keyMode: "test", hasKey: true }),
+      ).toBe("ok");
+    });
+
+    it("is ok for an unclassifiable key (opaque/restricted prefix) — no false positive", () => {
+      // Stripe itself rejects an invalid key; we don't manufacture a boot failure from a prefix we can't read.
+      expect(
+        diagnoseBillingConfig({ provider: "stripe", mode: "live", keyMode: "unknown", hasKey: true }),
+      ).toBe("ok");
     });
   });
 
