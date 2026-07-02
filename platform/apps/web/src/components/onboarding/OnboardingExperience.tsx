@@ -25,8 +25,10 @@ import { savePendingFirstRunReceipt } from "./first-run-receipt.js";
 import { PublicDoorNav } from "./PublicDoorNav.js";
 import {
   TELEGRAM_BOT_URL,
+  isMessagingChannelLive,
   messagingChannelCta,
   messagingChannelUrl,
+  telegramDeepLink,
   type MessagingChannelKey,
 } from "./messaging-entry.js";
 import {
@@ -318,8 +320,8 @@ const MESSAGING_CHANNELS: readonly {
   detail: string;
 }[] = [
   { key: "telegram", label: "Telegram", detail: "live bot room" },
-  { key: "imessage", label: "iMessage", detail: "native room" },
-  { key: "whatsapp", label: "WhatsApp", detail: "team thread" },
+  { key: "imessage", label: "iMessage", detail: "coming soon" },
+  { key: "whatsapp", label: "WhatsApp", detail: "coming soon" },
 ] as const;
 
 function MarketingIconRow({ onPick }: { onPick: (item: MarketingIconItem) => void }): React.JSX.Element {
@@ -362,6 +364,7 @@ function MessagingChannelRail({
           className="onboard-message-channel"
           data-kind={channel.key}
           data-selected={selected === channel.key ? "true" : "false"}
+          data-live={isMessagingChannelLive(channel.key) ? "true" : "false"}
           aria-pressed={selected === channel.key}
           onClick={() => onSelect(channel.key)}
         >
@@ -397,6 +400,8 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
   const [input, setInput] = useState("");
   const [doorError, setDoorError] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<MessagingChannelKey>("telegram");
+  // #1549: a not-yet-live channel (iMessage/WhatsApp) shows an honest note instead of a dead click.
+  const [notLiveChannel, setNotLiveChannel] = useState<MessagingChannelKey | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [finding, setFinding] = useState<SiteFinding | null>(null);
@@ -434,23 +439,27 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
     [provider],
   );
 
-  const openSelectedMessagingChannel = useCallback((): void => {
-    window.location.assign(messagingChannelUrl(selectedChannel));
-  }, [selectedChannel]);
-
   const onDoorSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
-    if (connectMode === "workspace") {
-      setDoorError(null);
-      openSelectedMessagingChannel();
-      return;
-    }
+    // Every path now requires a non-empty brief so the field's whole promise — "hand us your site" —
+    // is never lost at step one (#1549). The nudge applies in workspace mode too, not just guided.
     const value = input.trim();
     if (value === "") {
       setDoorError(ONBOARD_COPY.door.needInput);
       return;
     }
     setDoorError(null);
+    if (connectMode === "workspace") {
+      // iMessage/WhatsApp are not live yet: show the honest note instead of a dead `wa.me/` click.
+      if (!isMessagingChannelLive(selectedChannel)) {
+        setNotLiveChannel(selectedChannel);
+        return;
+      }
+      setNotLiveChannel(null);
+      // Telegram is live: carry the typed brief in as a `?start=` payload so the bot opens knowing it.
+      window.location.assign(telegramDeepLink(value));
+      return;
+    }
     setPhase("reading");
     void startReading(value);
   };
@@ -558,6 +567,7 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                 selected={selectedChannel}
                 onSelect={(channel) => {
                   setSelectedChannel(channel);
+                  setNotLiveChannel(null);
                   inputRef.current?.focus();
                 }}
               />
@@ -572,17 +582,39 @@ export function OnboardingExperience(props: OnboardingExperienceProps): React.JS
                   type="text"
                   value={input}
                   placeholder={ONBOARD_COPY.door.placeholder}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    if (notLiveChannel) setNotLiveChannel(null);
+                  }}
                   aria-invalid={doorError ? true : undefined}
                   aria-describedby={doorError ? "onboard-door-error" : undefined}
                 />
                 <button className="onboard-cta" type="submit">
-                  {connectMode === "workspace" ? messagingChannelCta(selectedChannel) : ONBOARD_COPY.door.submit}
+                  {connectMode === "workspace"
+                    ? isMessagingChannelLive(selectedChannel)
+                      ? messagingChannelCta(selectedChannel)
+                      : ONBOARD_COPY.door.notifyCta
+                    : ONBOARD_COPY.door.submit}
                 </button>
               </div>
               {doorError && (
                 <p id="onboard-door-error" className="onboard-error" role="alert">
                   {doorError}
+                </p>
+              )}
+              {notLiveChannel && (
+                <p className="onboard-notice" role="status">
+                  {ONBOARD_COPY.door.notLive}{" "}
+                  <a
+                    className="onboard-notice__link"
+                    href={telegramDeepLink(input)}
+                    onClick={() => {
+                      setSelectedChannel("telegram");
+                      setNotLiveChannel(null);
+                    }}
+                  >
+                    {messagingChannelCta("telegram")}
+                  </a>
                 </p>
               )}
             </form>

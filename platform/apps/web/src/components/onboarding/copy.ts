@@ -79,6 +79,10 @@ export const ONBOARD_COPY = {
     submit: "Start",
     /** Nudge if they hit go with an empty box. */
     needInput: "go on then — give us a product or a url to chew on.",
+    /** The primary action when a not-yet-live channel is picked — honest, no dead click (#1549). */
+    notifyCta: "Notify me",
+    /** Shown when a visitor picks iMessage/WhatsApp: honest that they're not live, steer to Telegram (#1549). */
+    notLive: "iMessage and WhatsApp aren't live yet — Telegram is the room today. Open it and we'll carry your brief straight in.",
     /** A quiet line under the input — reassurance, not config. */
     reassurance: "spend waits for your yes. sends follow your workspace policy, with receipts.",
   },

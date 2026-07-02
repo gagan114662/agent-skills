@@ -12535,6 +12535,24 @@ body[data-public-surface="light"],
   font-size: 13px;
   margin: 0;
 }
+/* #1549: honest "not live yet" note for iMessage/WhatsApp — a next step, never a dead click. */
+.onboard-notice {
+  color: var(--o-text-dim);
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0;
+}
+.onboard-notice__link {
+  color: var(--o-pop);
+  font-weight: 600;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+/* A not-yet-live channel reads as "coming soon", visually quieter than the live Telegram room. */
+.onboard-message-channel[data-live="false"] .onboard-message-channel__copy span {
+  color: var(--o-pop);
+  opacity: 0.85;
+}
 .onboard-eyebrow {
   font-size: 12px;
   letter-spacing: 0.04em;
