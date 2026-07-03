@@ -193,6 +193,21 @@ function threadEntries(state: AppState): ThreadEntry[] {
   });
 }
 
+/**
+ * GAP-4 (de-theater): has a REAL live run superseded the onboarding first-run receipt? The first-run
+ * receipt is a one-time snapshot from onboarding (e.g. "2:03 PM recorded first result for …"); once the
+ * room is showing live work — a live channel message the run posted, or a session currently attached to
+ * the active channel — that snapshot is stale and must NOT be overlaid on top of live activity. Kept as a
+ * pure function of {@link AppState} so both the render (`liveEverydayDataFromState`) and the clear effect
+ * read the SAME signal.
+ */
+export function liveRunSupersedesFirstRun(state: AppState): boolean {
+  if (threadEntries(state).length > 0) return true;
+  const channelId = state.activeChannelId;
+  if (channelId && state.liveSessions.some((session) => session.channelId === channelId)) return true;
+  return false;
+}
+
 function firstRunTime(firstRun: FirstRunReceiptDto): string {
   return new Date(firstRun.recordedAtMs).toLocaleTimeString([], {
     hour: "numeric",
@@ -567,7 +582,10 @@ export function liveEverydayDataFromState(
     },
     state,
   );
-  return withRuntimeReadiness(withFirstRunReceipt(liveData, firstRun), runtimeStatus);
+  // GAP-4: suppress the onboarding first-run receipt the moment a live run supersedes it, so the room
+  // never stacks a stale "2:03 PM recorded first result for …" receipt over live activity.
+  const receipt = liveRunSupersedesFirstRun(state) ? null : firstRun;
+  return withRuntimeReadiness(withFirstRunReceipt(liveData, receipt), runtimeStatus);
 }
 
 function groupForConnection(connection: ConnectionView): EverydayConnector["group"] {
@@ -1002,6 +1020,16 @@ export function LiveEverydayShell({
     // NOTE: state.approvals.status is read as a boot-time guard, not subscribed to — this effect stays keyed on
     // workspace/phase (realtime + the console view own live approval-filter changes), matching the sibling calls.
   }, [state.phase, state.identity?.workspaceId, store]);
+
+  // GAP-4 (de-theater): once a live run has produced real room activity, the onboarding first-run receipt is
+  // stale. Drop the pending browser copy so it is never re-recorded, and clear it from state so the dashboard
+  // stops overlaying a "2:03 PM recorded first result for …" receipt on top of live work.
+  useEffect(() => {
+    if (!firstRun) return;
+    if (!liveRunSupersedesFirstRun(state)) return;
+    clearPendingFirstRunReceipt();
+    setFirstRun(null);
+  }, [firstRun, state.activeChannelId, state.messagesByChannel, state.liveSessions]);
 
   // Wire every connector "connect" click to a real setup/OAuth flow (#1551). This never silently no-ops:
   // it works from the live connections list AND from the fallback catalog (when the list failed to load),
