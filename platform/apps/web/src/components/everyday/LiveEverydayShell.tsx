@@ -502,7 +502,10 @@ function liveSessionTask(agent: string, session: LiveSessionLite): string {
             : session.agentStatus === "done"
               ? "finished its current room task"
               : "standing by";
-  return agent + " is " + activity + " in this live room. Session " + session.id + " is " + session.status + ".";
+  // #1595: the room is a customer surface — never interpolate the raw `session.id` (a UUID) or the raw
+  // lifecycle `session.status` ("provisioning"/"running") into a lane's visible task. The human activity
+  // phrase already says what the teammate is doing; the session plumbing stays internal.
+  return agent + " is " + activity + " in this live room.";
 }
 
 function laneMatchesSession(lane: AgentLane, session: LiveSessionLite, state: AppState): boolean {

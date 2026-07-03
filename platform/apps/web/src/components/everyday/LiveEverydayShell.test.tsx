@@ -196,6 +196,40 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(within(room).queryByText(/codex_core::shell_snapshot/)).not.toBeInTheDocument();
   });
 
+  it("never leaks internal noise embedded on a later line of a deliverable message (#1598)", async () => {
+    const { store } = renderWithStore(<LiveEverydayShell />, {
+      messages: [
+        makeMessage({
+          id: "m-deliverable",
+          authorMemberId: "ag1",
+          // A #393 deliverable tail: real copy on line 1, then an inline team-event marker, a session
+          // terminal line, a codex runtime log, and a bare UUID — every one on a NON-first line.
+          body:
+            "Here's the launch angle: your setup takes 30 seconds, not 30 minutes.\n" +
+            '::team-event:: {"teamRunId":"tr-secret","subtaskId":"s-secret","agentMemberId":"member-019eb7","kind":"milestone","summary":"draft ready","branch":"ipop-scout-x","createdAt":"2026-07-01T00:00:00.000Z"}\n' +
+            "✅ session completed (exit 0)\n" +
+            "2026-07-01T12:00:00.000Z ERROR codex_core::shell_snapshot: snapshot failed\n" +
+            "run 019eb7aa-1111-2222-3333-444455556666 on ipop-operator-pricing",
+        }),
+      ],
+      approvals: [],
+    });
+
+    await act(async () => {
+      await store.bootstrap();
+    });
+
+    const room = await screen.findByRole("region", { name: EVERYDAY.room.heading });
+    expect(await within(room).findByText(/your setup takes 30 seconds/i)).toBeInTheDocument();
+    expect(within(room).queryByText(/::team-event::/)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/tr-secret|s-secret|member-019eb7/)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/teamRunId|subtaskId|agentMemberId/)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/exit 0|session completed/)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/codex_core::shell_snapshot/)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/019eb7aa-1111/)).not.toBeInTheDocument();
+    expect(within(room).queryByText(/ipop-operator-pricing/)).not.toBeInTheDocument();
+  });
+
   it("uses honest empty states when the workspace has no live work yet", async () => {
     const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
 
@@ -282,6 +316,11 @@ describe("LiveEverydayShell (#1181)", () => {
       "Operator is handing work to the next lane",
     );
     expect(projected.marketingBrief?.headline).toContain("Scout working, Quill working, Operator working");
+    // #1595: a lane's visible task must never leak the raw session id (a UUID) or the raw lifecycle status.
+    for (const lane of projected.room) {
+      expect(lane.task).not.toMatch(/sess-(?:scout|quill|codex)/);
+      expect(lane.task).not.toMatch(/\bSession\b.*\bis\b.*\b(?:running|provisioning)\b/);
+    }
   });
 
   it("does not mistake an idle room for an engaged kill switch", () => {
