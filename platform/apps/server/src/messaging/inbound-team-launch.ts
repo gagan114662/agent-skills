@@ -80,7 +80,14 @@ export interface InboundTeamLaunchOptions {
 }
 
 const ROOM_CHANNEL_NAME = "general";
-const LAUNCH_HANDLES = ["scout", "quill", "lens", "echo", "bid"] as const;
+export const LAUNCH_HANDLES = ["scout", "quill", "lens", "echo", "bid"] as const;
+
+// #1536: bound every messaging-room stage so a hung agent fails loudly instead of leaving the whole
+// run stuck on "working" forever. The web /everyday route already defaults these on the server side;
+// the inbound (Telegram/iMessage/WhatsApp) path built subtasks with neither, so a stalled session had
+// no coordinator-level wall clock and the run could hang indefinitely. These mirror the web defaults.
+export const MESSAGING_SUBTASK_TIMEOUT_MS = 30 * 60 * 1000;
+export const MESSAGING_SUBTASK_MAX_ATTEMPTS = 2;
 
 const LANE_BY_HANDLE: Record<(typeof LAUNCH_HANDLES)[number], string> = {
   scout: "site and market audit",
@@ -138,7 +145,7 @@ function connectionHelp(providerName: string, appUrl: string): string {
   );
 }
 
-function buildSubtask(
+export function buildSubtask(
   handle: (typeof LAUNCH_HANDLES)[number],
   agentMemberId: string,
   objective: string,
@@ -151,6 +158,8 @@ function buildSubtask(
     agentMemberId,
     branch: "messaging-" + handle + "-" + newId().slice(0, 8),
     phase: PHASE_BY_HANDLE[handle],
+    timeoutMs: MESSAGING_SUBTASK_TIMEOUT_MS,
+    maxAttempts: MESSAGING_SUBTASK_MAX_ATTEMPTS,
     ...(handle === "scout" ? { producesArtifacts: ["scout_research" as const, "brand_voice" as const] } : {}),
     ...(handle === "quill" ? { producesArtifacts: ["draft_set" as const] } : {}),
     ...(handle === "lens" ? { producesArtifacts: ["lens_review" as const] } : {}),

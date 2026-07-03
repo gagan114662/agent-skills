@@ -136,6 +136,13 @@ export interface SessionStore {
     id: string,
     fields: { status: SessionStatus; result?: string | null; exitCode?: number | null },
   ): Promise<boolean>;
+  /**
+   * The session's finalized, already-redacted result text (its work product). #1536: Team Mode reads
+   * it to recover a structured artifact from a lane that finished the work but did not emit the
+   * `::team-event::` envelope. **Optional** so every existing fake store still satisfies the seam;
+   * absent ⇒ no recovery (today's behavior).
+   */
+  getResult?(id: string): Promise<string | null>;
 }
 
 /** Channel delivery seam (real impl persists + publishes a message; tests inject a fake). */
@@ -902,6 +909,16 @@ export class SessionManager {
   /** Await a session's server-side completion (test/introspection helper). */
   async join(id: string): Promise<void> {
     await this.runs.get(id);
+  }
+
+  /**
+   * The session's finalized work-product text, if the store can read it (#1536). Team Mode uses this to
+   * recover a structured artifact from a lane that completed its work but never emitted the structured
+   * `::team-event::` envelope, so dependent lanes start instead of dead-ending on "missing artifact".
+   */
+  async workProduct(id: string): Promise<string | null> {
+    if (!this.deps.store.getResult) return null;
+    return this.deps.store.getResult(id);
   }
 
   /** Cancel every in-flight session and wait for teardown — used on server shutdown. */
