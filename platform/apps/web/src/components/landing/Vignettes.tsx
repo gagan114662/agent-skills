@@ -3,7 +3,8 @@
  * faithful slice of the console rather than a stock illustration:
  *
  *  - {@link DepartmentChips}  (story 01) — the eight specialists as spectrum-coloured chips.
- *  - {@link MissionControl}   (story 02) — the #147 mission-control strip: live sessions + running spend.
+ *  - {@link MissionControl}   (story 02) — the #147 mission-control strip: a "Sample" of sessions + spend
+ *                                          (illustrative static data, NOT a live reading — de-theater audit).
  *  - {@link ApprovalsDrawer}  (story 03) — a staged approvals drawer that flips pending → approved with
  *                                          the confetti micro-burst, then loops.
  *  - {@link MemoryLedger}     (story 04) — the append-only decision log.

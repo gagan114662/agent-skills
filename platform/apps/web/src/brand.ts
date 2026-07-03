@@ -901,7 +901,7 @@ export const WORKSPACE = {
   /** The ⌘K omni-search affordance at the top of the sidebar. */
   searchPlaceholder: "Search or jump to…",
   searchHint: "⌘K",
-  workspaceName: "Acme — workspace",
+  workspaceName: "Acme — sample workspace",
   sidebar: [
     {
       title: "Pinned",
@@ -959,9 +959,11 @@ export const WORKSPACE = {
 } as const;
 
 /**
- * The two staged vignettes used as section visuals (#165): a live approvals drawer that flips from
- * pending to approved (with the confetti micro-burst), and the #147 mission-control strip showing live
- * sessions and a running spend estimate against the cap. Pure data; the components animate the reveal.
+ * The two staged vignettes used as section visuals (#165): an approvals drawer that flips from pending to
+ * approved (with the confetti micro-burst), and the #147 mission-control strip showing example sessions and
+ * a running spend estimate against the cap. Pure illustrative sample data — NOT a live feed; the strings are
+ * labelled "Sample" in the UI so a visitor is never told static copy is a real-time reading (de-theater
+ * audit). The components animate the reveal only.
  */
 export const APPROVALS_VIGNETTE = {
   title: "Approvals",
@@ -979,8 +981,8 @@ export const APPROVALS_VIGNETTE = {
 
 export const MISSION_CONTROL = {
   title: "Mission control",
-  subtitle: "Every agent, what it's doing, and what it's spending — live.",
-  liveLabel: "Live now",
+  subtitle: "A sample of mission control — every agent, what it's doing, and what it's spending.",
+  liveLabel: "Sample",
   spendLabel: "Spend today",
   spend: "$2.40",
   spendCap: "of $50 cap",
