@@ -4118,6 +4118,9 @@ select:focus-visible {
   margin-left: 6px;
   color: var(--accent);
   font-size: 11px;
+  /* The "Two months free" badge is decoration inside the toggle: never let it be the click target, so a
+     tap that lands on the badge always flips the button (billing cadence) instead of being swallowed. */
+  pointer-events: none;
 }
 .pricing-page__cadence-option.is-active {
   background: var(--accent);

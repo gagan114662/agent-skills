@@ -262,4 +262,26 @@ describe("everyday-agent-text — multi-line bodies (#1598/#1595)", () => {
       "2. Show the before/after dashboard.";
     expect(customerVisibleAgentText(body)).toBe(body);
   });
+
+  it("never leaks the developer's machine hostname into the room (#1595/#1598)", () => {
+    // A bare `.local` mDNS hostname in an otherwise-genuine agent line is dropped, not shown — and the
+    // per-line sweep (sanitizeBodyLines → scrubInternalJargon) carries the same rule to any later line.
+    expect(customerVisibleAgentText("built it on gagans-MacBook-Pro.local and it passed")).toBe(
+      "built it on and it passed",
+    );
+    // The bare Apple device name (no `.local` suffix) is caught too.
+    expect(scrubInternalJargon("ran on gagans-MacBook-Pro just now")).toBe("ran on just now");
+    // Holds through the failure-line rewrite and an embedded hostname on a later body line.
+    expect(scrubInternalJargon("done on some-host.local (exit 0)")).toBe("done on");
+    const failure = "❌ the build on gagans-MacBook-Pro.local stalled _(error)_\n`session failed · exit n/a`";
+    expect(customerVisibleAgentText(failure)).not.toMatch(/MacBook|\.local/);
+    const multiline = "Shipped the pricing tweak.\nlast run happened on gagans-MacBook-Pro.local";
+    const swept = customerVisibleAgentText(multiline);
+    expect(swept).toContain("Shipped the pricing tweak");
+    expect(swept).not.toMatch(/MacBook|\.local/);
+    // A real link to a `.local` host survives the sweep; only bare hostnames are stripped.
+    expect(scrubInternalJargon("preview at http://demo.local/report is live")).toBe(
+      "preview at http://demo.local/report is live",
+    );
+  });
 });
