@@ -779,6 +779,69 @@ describe("LiveEverydayShell (#1181)", () => {
     expect(launchTeamRun).not.toHaveBeenCalled();
   });
 
+  it("submitting the composer prevents the native form GET and POSTs the brief exactly once (#1590)", async () => {
+    vi.spyOn(api, "getConnections").mockResolvedValue({
+      connections: [],
+      canManageInternal: false,
+    });
+    vi.spyOn(api, "getRuntimeStatus").mockResolvedValue({
+      provider: "claude",
+      connected: false,
+      reason: "The team engine is not connected for this session.",
+      selectedHarness: "claude-code",
+      userAuthenticated: true,
+      workspaceAuthenticated: true,
+      runtimeAuth: "missing",
+      authMode: null,
+      fallback: "none",
+      apiKeySatisfies: false,
+    });
+    // iMessage relay is not configured, so the room falls through to the canonical web-room POST.
+    vi.spyOn(api, "startIMessageRoom").mockResolvedValue({
+      status: "not_configured",
+      dryRun: false,
+      error: "iMessage relay is not configured for this workspace yet.",
+    });
+    const postMessage = vi
+      .spyOn(api, "postMessage")
+      .mockResolvedValue(makeMessage({ id: "web-room", channelId: "c1", body: "build ipop.ai" }));
+
+    // #1590 root-cause guard: capture the real submit event. If the composer's handler were unwired,
+    // the browser would run a native form submit (GET /everyday) with defaultPrevented === false and
+    // reload the page, discarding the brief. React's onSubmit must prevent that. A bubble-phase window
+    // listener runs AFTER the delegated React handler, so it observes the post-preventDefault state.
+    const submitDefaults: boolean[] = [];
+    const onSubmit = (event: Event): void => {
+      submitDefaults.push(event.defaultPrevented);
+    };
+    window.addEventListener("submit", onSubmit);
+
+    try {
+      const { store } = renderWithStore(<LiveEverydayShell />, { messages: [], approvals: [] });
+      await act(async () => {
+        await store.bootstrap();
+      });
+
+      const composer = await screen.findByRole("textbox", { name: EVERYDAY.prompt });
+      fireEvent.change(composer, { target: { value: "build ipop.ai" } });
+      fireEvent.click(screen.getByRole("button", { name: EVERYDAY.composerSend }));
+
+      // Exactly one POST to /channels/{id}/messages — never zero (native GET) and never a double-submit.
+      await waitFor(() => expect(postMessage).toHaveBeenCalledTimes(1));
+      expect(postMessage).toHaveBeenCalledWith("c1", "build ipop.ai");
+
+      // The native submit was suppressed…
+      expect(submitDefaults.length).toBeGreaterThan(0);
+      expect(submitDefaults.every((prevented) => prevented)).toBe(true);
+
+      // …the input is cleared (not lost to a reload) and the brief is optimistically echoed in the room.
+      expect((composer as HTMLInputElement).value).toBe("");
+      expect(screen.getAllByText("build ipop.ai").length).toBeGreaterThan(0);
+    } finally {
+      window.removeEventListener("submit", onSubmit);
+    }
+  });
+
   it("falls back to the canonical web room and still launches agents when iMessage is not configured (#1466)", async () => {
     vi.spyOn(api, "getConnections").mockResolvedValue({
       connections: [],
