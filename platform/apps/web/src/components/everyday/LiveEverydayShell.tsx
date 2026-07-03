@@ -648,7 +648,7 @@ interface RoomAgentSpec {
   readonly outputFormat: readonly string[];
 }
 
-const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
+export const ROOM_AGENT_TASKS: readonly RoomAgentSpec[] = [
   {
     role: "Scout",
     lane: "insight mining",
@@ -748,7 +748,7 @@ const PROMPT_STRUCTURE_LABELS = [
   "10. Prefilled response (if any)",
 ] as const;
 
-function structuredRoomTask(spec: RoomAgentSpec, goal: string): string {
+export function structuredRoomTask(spec: RoomAgentSpec, goal: string): string {
   const baseSections = [
     [
       PROMPT_STRUCTURE_LABELS[0],
