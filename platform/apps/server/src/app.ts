@@ -49,7 +49,7 @@ import { marketingRoutes } from "./routes/marketing.js";
 import { agentRegistryRoutes } from "./routes/agent-registry.js";
 import { createAgentRegistryService } from "./agent-registry/default.js";
 import { parseHandoffChain } from "./agent-registry/handoff.js";
-import { maybeAutoSeedOnSignup, buildMarketingMentionTrigger } from "./marketing/default.js";
+import { maybeAutoSeedOnSignup, buildMarketingMentionTrigger, createRoomBriefLauncher } from "./marketing/default.js";
 import { setMarketingMentionTrigger } from "./messaging/delivery.js";
 import { createExternalRoomMirror, setExternalRoomMirror } from "./messaging/external-room-mirror.js";
 import { createIMessageRoomMirror, setIMessageRoomMirror } from "./messaging/imessage-room-mirror.js";
@@ -916,7 +916,20 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // over REST or MCP — without this, the launch only ran via the unused `/marketing` endpoint and a
   // real @mention silently did nothing (sessionsStarted stayed 0). The trigger gates itself (human
   // author, marketing channel, mentioned persona) and runs best-effort over the SAME SessionManager.
-  setMarketingMentionTrigger(buildMarketingMentionTrigger(sessionManager, app.log));
+  setMarketingMentionTrigger(
+    buildMarketingMentionTrigger(sessionManager, app.log, {
+      // GAP-1 path C (owner-first, default-off via `marketing.launchRoomBrief`): a plain brief posted to the
+      // room's general channel with no @mention starts a threaded team-run on that exact text — reusing the
+      // same coordinator/runtime the everyday + inbound-bridge launches use.
+      launch: createRoomBriefLauncher({
+        sessionManager,
+        coordinator: teamCoordinator,
+        runtimeStatus,
+        runtimeProvider,
+        logger: app.log,
+      }),
+    }),
+  );
   // #417 visible governed handoffs: when an agent's deliverable @mentions a fleet teammate, launch that
   // teammate through the EXISTING governed a2a path (depth/cycle/capability-bounded by `decideA2ACall`)
   // and visibly narrate it in-channel via the #370 bridge. Wired here AFTER both the SessionManager and

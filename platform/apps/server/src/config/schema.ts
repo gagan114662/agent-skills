@@ -496,6 +496,18 @@ export const marketingSchema = z.object({
    * The briefs ride the #320 preamble as reference DATA (#200 FM#6) — never instructions, never a new tool.
    */
   awardTransfer: z.boolean().optional(),
+  /**
+   * Auto-launch a threaded team-run when a human posts a BRIEF as a plain message to the room's `general`
+   * channel — no `/everyday` composer, no `@mention` (GAP-1 path C). Without this, such a raw brief no-ops
+   * at the #123 mention trigger (no addressed persona ⇒ nothing launches), so the owner's brief is never
+   * threaded into a subtask and the room only ever shows the ambient owner-venture content. When on, the
+   * brief starts one run whose subtasks carry the OWNER'S text via the SAME builder as the messaging bridge
+   * (never a generic "market ipop" default — see `room-brief-launch.ts`). Default OFF and gated
+   * owner-workspace-first (`shouldLaunchRoomBriefForWorkspace`): an unconfigured deployment is unchanged,
+   * and the `/everyday` composer (which posts to `general` AND launches its own run) is untouched — enable
+   * this only for the raw API/headless briefing surface so the composer path cannot double-launch.
+   */
+  launchRoomBrief: z.boolean().optional(),
 });
 
 /**

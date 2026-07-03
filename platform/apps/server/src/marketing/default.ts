@@ -69,6 +69,20 @@ import { createDefaultDecisionService } from "../decisions/default.js";
 import { getWorkspaceOnboarding } from "../db/repositories/workspace-onboarding.js";
 import { postMessage } from "../db/repositories/messages.js";
 import { resolveAndPersistMentions } from "../db/repositories/mentions.js";
+import { newId } from "../db/id.js";
+import { LAUNCH_HANDLES } from "../messaging/inbound-team-launch.js";
+import type { TeamCoordinator } from "../team/coordinator.js";
+import {
+  DEFAULT_RUNTIME_PROVIDER,
+  type RuntimeProvider,
+  type RuntimeStatusProvider,
+} from "../runtime/provider.js";
+import {
+  buildRoomBriefSubtasks,
+  handleRoomBriefPost,
+  isRoomBriefChannel,
+  shouldLaunchRoomBriefForWorkspace,
+} from "./room-brief-launch.js";
 
 /**
  * Production wiring for the Marketing Department Fleet (#123, ADR-0123). Binds the pure orchestrators
@@ -564,11 +578,88 @@ export function createMarketingBriefService(
  * (#68 auth gate → #59 SubagentService → #96 venture gate → #71 admission → session). No mentioned
  * persona → `{ok:false}`, a harmless no-op. The fan-out invokes this best-effort and swallows denials.
  */
+/**
+ * GAP-1 (path C): build the seam that turns a plain human BRIEF posted to the room's `general` channel into
+ * ONE threaded team-run on that exact text — the same graph the external messaging bridge builds, so it can
+ * never fall back to a generic "market ipop" default. Seeds/looks up the department agents (idempotent, like
+ * the inbound bridge), grants each the channel-write it needs, and fires the coordinator best-effort. Only
+ * launches on a connected runtime; a run failure is isolated per subtask by the coordinator and never fails
+ * the message write. No new authority — reuses the #123 seed + #25 grants + the existing team coordinator.
+ */
+export function createRoomBriefLauncher(deps: {
+  sessionManager: SessionManager;
+  coordinator: TeamCoordinator;
+  runtimeStatus: RuntimeStatusProvider;
+  runtimeProvider?: RuntimeProvider;
+  logger?: { error(obj: Record<string, unknown>, msg: string): void };
+}): (input: {
+  workspaceId: string;
+  createdByMemberId: string;
+  channelId: string;
+  objective: string;
+}) => Promise<void> {
+  const provider = deps.runtimeProvider ?? DEFAULT_RUNTIME_PROVIDER;
+  return async (input) => {
+    const status = await deps.runtimeStatus.status(input.workspaceId, input.createdByMemberId);
+    if (!status.connected) return;
+    const seeded = await seedDepartmentForWorkspace(deps.sessionManager, {
+      workspaceId: input.workspaceId,
+      createdByMemberId: input.createdByMemberId,
+      welcomeTasks: false,
+    });
+    const agents = LAUNCH_HANDLES.flatMap((handle) => {
+      const agent = seeded.agents.find((candidate) => candidate.handle === handle);
+      return agent ? [{ handle, agentMemberId: agent.agentMemberId }] : [];
+    });
+    const subtasks = buildRoomBriefSubtasks(input.objective, agents, provider);
+    if (subtasks.length === 0) return;
+    for (const subtask of subtasks) {
+      await addChannelMember(input.channelId, subtask.agentMemberId);
+      await grantCapability({
+        workspaceId: input.workspaceId,
+        memberId: subtask.agentMemberId,
+        resourceType: "channel",
+        resourceId: input.channelId,
+        capability: "write",
+        grantedByMemberId: input.createdByMemberId,
+      });
+    }
+    const teamRunId = newId();
+    void deps.coordinator
+      .runTeam({
+        workspaceId: input.workspaceId,
+        channelId: input.channelId,
+        createdByMemberId: input.createdByMemberId,
+        teamRunId,
+        subtasks,
+      })
+      .catch((err) => {
+        deps.logger?.error({ err, teamRunId }, "room-brief team run crashed");
+      });
+  };
+}
+
 export function buildMarketingMentionTrigger(
   sessionManager: SessionManager,
   logger?: { warn(obj: Record<string, unknown>, msg: string): void },
+  /**
+   * GAP-1 path C (owner-first, default-off): when provided, a plain human brief posted to the room's
+   * `general` channel with no @mention starts a threaded team-run on that text. Absent ⇒ today's behavior
+   * (raw briefs stay chat). Enable only for the raw API/headless briefing surface — the `/everyday` composer
+   * posts to `general` AND launches its own run, so enabling this alongside it would double-launch.
+   */
+  roomBrief?: {
+    launch: (input: {
+      workspaceId: string;
+      createdByMemberId: string;
+      channelId: string;
+      objective: string;
+    }) => Promise<void>;
+  },
 ): MarketingMentionTrigger {
   const mention = createMarketingMentionService(sessionManager, logger);
+  const departmentPersonaCount = async (workspaceId: string, messageId: string): Promise<number> =>
+    (await personaMentionsOnMessage(workspaceId, messageId)).filter((p) => departmentForHandle(p.name)).length;
   return async (identity, channel, message) => {
     if (identity.kind !== "human") return;
     // #468: delegate to the pure handler so a department channel LAUNCHES, a denial is SURFACED, and an agent
@@ -598,5 +689,26 @@ export function buildMarketingMentionTrigger(
       channel,
       message,
     );
+    // GAP-1 path C: a plain brief posted to the room's general channel (no @mention) is otherwise dropped —
+    // the mention handler above no-ops without an addressed persona. Owner-first + default-off; a mentioned
+    // post is skipped here (the mention path above already handled it) so the same message never double-runs.
+    if (roomBrief && shouldLaunchRoomBriefForWorkspace(loadConfig(identity.workspaceId).marketing, identity.workspaceId)) {
+      await handleRoomBriefPost(
+        {
+          isRoomChannel: (name) => isRoomBriefChannel(name),
+          addressedPersonaCount: departmentPersonaCount,
+          launchRoomBrief: ({ channelId, objective }) =>
+            roomBrief.launch({
+              workspaceId: identity.workspaceId,
+              createdByMemberId: identity.memberId,
+              channelId,
+              objective,
+            }),
+        },
+        { workspaceId: identity.workspaceId, memberId: identity.memberId, kind: identity.kind },
+        channel,
+        message,
+      );
+    }
   };
 }
