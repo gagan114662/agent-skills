@@ -4,9 +4,11 @@
  * shopping visitor showed the whole homepage instead of a focused, scannable plan comparison.
  *
  * This is that focused destination: a short hero, the three plans side-by-side with "what you get"
- * bullets, and one CTA per plan that carries the chosen plan into signup (`/signup?plan=<key>`) so the
- * sign-up form can frame it as a free trial. Pricing copy + plans come from `brand.ts` (`LANDING.plans`
- * is the one pricing truth) so this page never duplicates a price. Public at every phase, code-split.
+ * bullets, and one CTA per plan. Each CTA reaches that plan's Stripe Payment Link (`buy.stripe.com`) hosted
+ * checkout when configured (#1550, {@link ../../pricing-checkout}), falling back to the `/signup?plan=<key>`
+ * hand-off otherwise — never a dead link. A `?plan=<key>` deep link (the dashboard upsell) visibly
+ * preselects the matching card. Pricing copy + plans come from `brand.ts` (`LANDING.plans` is the one
+ * pricing truth) so this page never duplicates a price. Public at every phase, code-split.
  *
  * Every word comes from `brand.ts`; brand.test scans this file for hardcoded brand strings.
  */
@@ -14,13 +16,23 @@ import { FAQ, LANDING, PRICING, REFUND_POLICY } from "../../brand.js";
 import { Link } from "../../routing.js";
 import { trackAcquisitionEvent } from "../../acquisition-events.js";
 import { PopMark } from "../PopMark.js";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LaunchReadiness } from "./LaunchReadiness.js";
 import { PublicDoorFooter, PublicDoorNav } from "../onboarding/PublicDoorNav.js";
 import { TELEGRAM_BOT_URL } from "../onboarding/messaging-entry.js";
 import { publicThemeStyle } from "../../design/public-theme.js";
+import { planCheckoutHref, type BillingInterval, type PlanKey } from "../../pricing-checkout.js";
 
-type BillingInterval = "month" | "year";
+/**
+ * #1550: a plan chosen elsewhere (the dashboard "View Pro" upsell links to `/pricing?plan=pro`) arrives as
+ * `?plan=<key>`. Resolve it to a known plan key so the matching card can be visibly preselected — before
+ * this the deep link was a no-op. SSR-safe: no `window` read on the server render.
+ */
+function preselectedPlanFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const key = new URLSearchParams(window.location.search).get("plan");
+  return key && LANDING.plans.some((plan) => plan.key === key) ? key : null;
+}
 
 /** The pricing questions, drawn from the shared FAQ by matching question text — no copy duplicated. */
 function pricingFaq(): readonly { q: string; a: string }[] {
@@ -34,6 +46,14 @@ function trackCta(href: string, source: string): void {
 export function PricingPage(): React.JSX.Element {
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("month");
   const isAnnual = billingInterval === "year";
+  // #1550: preselect + scroll to the card named by `?plan=<key>` so the dashboard upsell deep link lands
+  // on (and highlights) the right tier instead of doing nothing.
+  const [preselectedPlan] = useState<string | null>(preselectedPlanFromUrl);
+  const preselectedRef = useRef<HTMLLIElement | null>(null);
+  useEffect(() => {
+    // `scrollIntoView` is undefined under jsdom — optional-chain the call so tests never throw.
+    preselectedRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  }, []);
   return (
     <div className="pricing-page public-surface" style={publicThemeStyle(["o"])}>
       <PublicDoorNav className="pricing-page__nav" startHref={TELEGRAM_BOT_URL} />
@@ -69,57 +89,67 @@ export function PricingPage(): React.JSX.Element {
             </button>
           </div>
           <ul className="pricing__grid">
-            {LANDING.plans.map((plan, i) => (
-              <li
-                key={plan.key}
-                className={`pricing-card pricing-card--pop${
-                  plan.featured ? " pricing-card--featured" : ""
-                }`}
-                style={{ animationDelay: `${i * 90}ms` }}
-              >
-                {plan.featured && <span className="pricing-card__ribbon">{PRICING.popularBadge}</span>}
-                <h2 className="pricing-card__name">{plan.name}</h2>
-                <p className="pricing-card__price">
-                  <span className="pricing-card__amount">
-                    {isAnnual ? annualPrice(plan.price) : plan.price}
-                  </span>
-                  <span className="pricing-card__period">{isAnnual ? PRICING.perYear : PRICING.perMonth}</span>
-                </p>
-                <p className="pricing-card__tagline">{plan.tagline}</p>
-                <div className="pricing-card__value" aria-label={`Everyday value for ${plan.name}`}>
-                  <p className="pricing-card__value-label">Every day</p>
-                  <p className="pricing-card__value-copy">{plan.dailyValue}</p>
-                </div>
-                <div className="pricing-card__limit">
-                  <p>
-                    <span>Limit:</span> {plan.dailyLimit}
-                  </p>
-                  <p>
-                    <span>Upgrade:</span> {plan.upgradeTrigger}
-                  </p>
-                </div>
-                <ul className="pricing-card__highlights">
-                  {plan.highlights.map((h) => (
-                    <li key={h} className="pricing-card__highlight">
-                      {h}
-                    </li>
-                  ))}
-                </ul>
-                <a
-                  href={`/signup?plan=${plan.key}&billing=${billingInterval}`}
-                  className={`btn pricing-card__cta${plan.featured ? " btn--primary" : ""}`}
-                  aria-label={`${PRICING.planCta} — ${plan.name}`}
-                  onClick={() =>
-                    trackCta(
-                      `/signup?plan=${plan.key}&billing=${billingInterval}`,
-                      `pricing-plan-${plan.key}-${billingInterval}`,
-                    )
-                  }
+            {LANDING.plans.map((plan, i) => {
+              const isPreselected = plan.key === preselectedPlan;
+              const checkoutHref = planCheckoutHref(plan.key as PlanKey, billingInterval);
+              return (
+                <li
+                  key={plan.key}
+                  ref={isPreselected ? preselectedRef : undefined}
+                  aria-current={isPreselected ? "true" : undefined}
+                  className={`pricing-card pricing-card--pop${
+                    plan.featured ? " pricing-card--featured" : ""
+                  }${isPreselected ? " pricing-card--selected" : ""}`}
+                  style={{ animationDelay: `${i * 90}ms` }}
                 >
-                  {PRICING.planCta}
-                </a>
-              </li>
-            ))}
+                  {plan.featured && (
+                    <span className="pricing-card__ribbon">{PRICING.popularBadge}</span>
+                  )}
+                  <h2 className="pricing-card__name">{plan.name}</h2>
+                  <p className="pricing-card__price">
+                    <span className="pricing-card__amount">
+                      {isAnnual ? annualPrice(plan.price) : plan.price}
+                    </span>
+                    <span className="pricing-card__period">
+                      {isAnnual ? PRICING.perYear : PRICING.perMonth}
+                    </span>
+                  </p>
+                  <p className="pricing-card__tagline">{plan.tagline}</p>
+                  <div
+                    className="pricing-card__value"
+                    aria-label={`Everyday value for ${plan.name}`}
+                  >
+                    <p className="pricing-card__value-label">Every day</p>
+                    <p className="pricing-card__value-copy">{plan.dailyValue}</p>
+                  </div>
+                  <div className="pricing-card__limit">
+                    <p>
+                      <span>Limit:</span> {plan.dailyLimit}
+                    </p>
+                    <p>
+                      <span>Upgrade:</span> {plan.upgradeTrigger}
+                    </p>
+                  </div>
+                  <ul className="pricing-card__highlights">
+                    {plan.highlights.map((h) => (
+                      <li key={h} className="pricing-card__highlight">
+                        {h}
+                      </li>
+                    ))}
+                  </ul>
+                  <a
+                    href={checkoutHref}
+                    className={`btn pricing-card__cta${plan.featured ? " btn--primary" : ""}`}
+                    aria-label={`${PRICING.planCta} — ${plan.name}`}
+                    onClick={() =>
+                      trackCta(checkoutHref, `pricing-plan-${plan.key}-${billingInterval}`)
+                    }
+                  >
+                    {PRICING.planCta}
+                  </a>
+                </li>
+              );
+            })}
           </ul>
           <p className="pricing__footnote">
             {PRICING.footnote}{" "}
@@ -153,7 +183,11 @@ export function PricingPage(): React.JSX.Element {
             {LANDING.sections.ctaTitle}
           </h2>
           <p className="landing__final-sub">{LANDING.sections.ctaSub}</p>
-          <a href="/signup" className="btn btn--primary landing__cta landing__final-cta" onClick={() => trackCta("/signup", "pricing-final")}>
+          <a
+            href="/signup"
+            className="btn btn--primary landing__cta landing__final-cta"
+            onClick={() => trackCta("/signup", "pricing-final")}
+          >
             {LANDING.sections.ctaButton}
           </a>
           <Link href="/demo" className="btn landing__cta landing__cta--ghost">

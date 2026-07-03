@@ -47,6 +47,27 @@ The console resolves the API origin from `VITE_API_BASE_URL` (`apps/web/src/api/
 - **Split deploy** (the ipop.ai production posture): set `VITE_API_BASE_URL=https://api.ipop.ai` in the
   Vercel project's environment variables. REST calls and the WebSocket then go cross-origin.
 
+### Per-plan checkout links (`/pricing` money path, #1550)
+
+Each plan card on the public `/pricing` page routes its CTA to a Stripe **Payment Link** (`buy.stripe.com/…`)
+— the anonymous, no-account-required hosted checkout. Create one Payment Link per plan × billing interval in
+the Stripe dashboard and wire them into the Vercel project's environment (`apps/web/src/pricing-checkout.ts`
+reads them; Vite inlines them at build):
+
+```
+VITE_STRIPE_PAYMENT_LINK_STARTER_MONTH=https://buy.stripe.com/…
+VITE_STRIPE_PAYMENT_LINK_STARTER_YEAR=https://buy.stripe.com/…
+VITE_STRIPE_PAYMENT_LINK_PRO_MONTH=https://buy.stripe.com/…
+VITE_STRIPE_PAYMENT_LINK_PRO_YEAR=https://buy.stripe.com/…
+VITE_STRIPE_PAYMENT_LINK_AGENCY_MONTH=https://buy.stripe.com/…
+VITE_STRIPE_PAYMENT_LINK_AGENCY_YEAR=https://buy.stripe.com/…
+```
+
+An interval-agnostic `VITE_STRIPE_PAYMENT_LINK_<PLAN>` is accepted as a fallback when a plan has one price.
+Only absolute `https://buy.stripe.com/…` values are honoured; anything else (or an unset var) falls back to
+the `/signup?plan=<key>&billing=<interval>` hand-off, so a CTA is never a dead link. These links only ever
+**collect** money (inbound); charges/refunds/payouts stay `#13`-gated.
+
 ## 2. Deploying current `main`
 
 - **Web:** Vercel auto-deploys on every push to `main`. `vercel.json` pins the build:
