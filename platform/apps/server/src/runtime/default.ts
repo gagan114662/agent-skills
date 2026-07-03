@@ -9,6 +9,7 @@ import {
   createAgentSession,
   finalizeSession,
   forceFinalizeIfLive,
+  getAgentSessionResult,
   heartbeatSession,
   markSessionRunning,
 } from "../db/repositories/agent-sessions.js";
@@ -90,6 +91,9 @@ export const dbStore: SessionStore = {
   // #248: race-safe terminal write used to cancel an orphaned/cross-process session and to defend the
   // pre-start vanish path — only finalizes a still-live row (never stomps a concurrent finalize).
   forceFinalize: forceFinalizeIfLive,
+  // #1536: read a completed lane's work product so Team Mode can recover a structured artifact when
+  // the agent finished the work but never emitted the ::team-event:: envelope.
+  getResult: getAgentSessionResult,
 };
 
 /**

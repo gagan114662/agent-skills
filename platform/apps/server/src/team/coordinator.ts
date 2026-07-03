@@ -18,6 +18,13 @@ export interface TeamLauncher {
   launch(input: LaunchInput): Promise<{ id: string }>;
   join(id: string): Promise<void>;
   cancel?(id: string): Promise<boolean>;
+  /**
+   * The lane's finalized work-product text (the session's terminal result), if available. #1536: when
+   * a producer lane completes without emitting a structured `::team-event::` artifact, the coordinator
+   * recovers a schema-valid fallback from this text so dependent lanes start instead of dead-ending on
+   * "missing required artifact". Optional so fakes/tests opt in.
+   */
+  workProduct?(id: string): Promise<string | null>;
 }
 
 /** One unit of parallel work in a team run: an agent, its prompt, and the branch it owns. */
@@ -330,6 +337,60 @@ export function buildTeamRunTimeline(
   };
 }
 
+/**
+ * #1536: artifact kinds the coordinator can honestly recover from a lane's free-text output when the
+ * agent finished the work but did not emit the structured `::team-event::` envelope. Only the two
+ * upstream research artifacts qualify — they are plain narrative that safely wraps into a valid
+ * artifact. The downstream structured artifacts (draft_set, lens_review) have strict per-format
+ * validators and are never fabricated; those lanes still fail loudly if unproduced.
+ */
+const RECOVERABLE_ARTIFACT_KINDS: readonly TeamArtifactKind[] = ["scout_research", "brand_voice"];
+
+const RECOVERED_ARTIFACT_NOTE =
+  "Auto-structured by the coordinator from this lane's completed output because it did not emit a " +
+  "structured team-event artifact. See siteSummary/profile for the lane's own words.";
+
+/** Wrap a completed lane's real work-product text into a schema-valid fallback artifact (#1536). */
+function recoverArtifactFromWorkProduct(
+  kind: TeamArtifactKind,
+  workProduct: string,
+): TeamArtifact | null {
+  const summary = workProduct.trim().slice(0, 4000);
+  if (!summary) return null;
+  if (kind === "scout_research") {
+    return {
+      kind: "scout_research",
+      schemaVersion: 1,
+      siteSummary: summary,
+      icp: RECOVERED_ARTIFACT_NOTE,
+      positioning: RECOVERED_ARTIFACT_NOTE,
+      proofPoints: [],
+      competitors: [],
+      toneNotes: RECOVERED_ARTIFACT_NOTE,
+      sourceUrls: [],
+    };
+  }
+  if (kind === "brand_voice") {
+    // The validator requires each list to carry at least one non-blank item. Seed them with an honest
+    // "recovered, refine me" placeholder and a real example line lifted from the lane's own output, so
+    // the profile is valid and clearly provisional rather than fabricated voice guidance.
+    const exampleLine = summary.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? summary;
+    return {
+      kind: "brand_voice",
+      schemaVersion: 1,
+      profile: {
+        toneAxes: [RECOVERED_ARTIFACT_NOTE],
+        vocabularyDo: [RECOVERED_ARTIFACT_NOTE],
+        vocabularyDont: [RECOVERED_ARTIFACT_NOTE],
+        sentenceRhythm: summary,
+        exampleLines: [exampleLine.slice(0, 280)],
+      },
+      sourceUrls: [],
+    };
+  }
+  return null;
+}
+
 function artifactLabel(kind: TeamArtifactKind): string {
   if (kind === "scout_research") return "Scout research artifact";
   if (kind === "brand_voice") return "Workspace brand voice profile";
@@ -637,6 +698,9 @@ export class TeamCoordinator {
         lastSessionId = sessionId;
         const remainingTimeoutMs = timeoutMs === null ? null : Math.max(1, timeoutMs - (Date.now() - startedMs));
         await this.withTimeout(this.deps.launcher.join(sessionId), remainingTimeoutMs);
+        // #1536: the lane finished. If it did the work but never emitted the structured artifact, recover
+        // one from its own output so dependent lanes start instead of dead-ending on "missing artifact".
+        await this.recoverMissingProducedArtifacts(input, subtask, sessionId);
         const missingProducedArtifacts = await this.missingProducedArtifacts(input, subtask);
         if (missingProducedArtifacts.length > 0) {
           throw new Error(
@@ -784,6 +848,76 @@ export class TeamCoordinator {
             event.artifact?.kind === kind,
         ),
     );
+  }
+
+  /**
+   * #1536: recover a structured artifact from a completed lane's own output.
+   *
+   * The live failure: Scout finished (exit 0) and posted its insight brief into the room, but never
+   * emitted the structured `::team-event::` scout_research/brand_voice artifact — so nothing was
+   * registered and every dependent lane blocked on "missing required artifact: Scout research
+   * artifact". When a producer lane completes with a real work product but a recoverable artifact was
+   * not registered, wrap that work product into a schema-valid fallback and post it (authored by the
+   * lane's agent). Only the upstream research artifacts are recoverable; downstream structured
+   * artifacts still fail loudly if unproduced. No send/spend behavior changes.
+   */
+  private async recoverMissingProducedArtifacts(
+    input: TeamRunInput,
+    subtask: Subtask,
+    sessionId: string,
+  ): Promise<void> {
+    if (!this.deps.launcher.workProduct) return;
+    const recoverable = uniqueArtifactKinds(subtask.producesArtifacts).filter((kind) =>
+      RECOVERABLE_ARTIFACT_KINDS.includes(kind),
+    );
+    if (recoverable.length === 0) return;
+    const missing = await this.missingProducedArtifacts(input, subtask);
+    const target = recoverable.filter((kind) => missing.includes(kind));
+    if (target.length === 0) return;
+
+    let workProduct: string | null = null;
+    try {
+      workProduct = await this.deps.launcher.workProduct(sessionId);
+    } catch (err) {
+      this.deps.logger.warn(
+        { err: err instanceof Error ? err.message : String(err), subtaskId: subtask.subtaskId },
+        "team lane work-product lookup failed; cannot recover artifact",
+      );
+      return;
+    }
+    if (!workProduct || !workProduct.trim()) return;
+
+    for (const kind of target) {
+      const artifact = recoverArtifactFromWorkProduct(kind, workProduct);
+      if (!artifact) continue;
+      const event: TeamEvent = {
+        teamRunId: input.teamRunId,
+        subtaskId: subtask.subtaskId,
+        agentMemberId: subtask.agentMemberId,
+        kind: "milestone",
+        summary: "recovered " + artifactLabel(kind) + " from lane output",
+        branch: subtask.branch,
+        detail: { recoveredArtifact: true, sessionId },
+        artifact,
+        createdAt: this.now(),
+      };
+      try {
+        await this.deps.channel.postEvent({
+          workspaceId: input.workspaceId,
+          channelId: input.channelId,
+          event,
+        });
+        this.deps.logger.warn(
+          { subtaskId: subtask.subtaskId, kind },
+          "team lane completed without a structured artifact; recovered a fallback from its output",
+        );
+      } catch (err) {
+        this.deps.logger.error(
+          { err: err instanceof Error ? err.message : String(err), subtaskId: subtask.subtaskId, kind },
+          "failed to post recovered fallback artifact",
+        );
+      }
+    }
   }
 
   /** Post a coordinator-authored lifecycle event to the team channel (queued on failure). */

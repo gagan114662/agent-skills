@@ -1258,4 +1258,86 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(timeline.subtasks.find((s) => s.subtaskId === "scout")?.state).toBe("done");
     expect(timeline.subtasks.find((s) => s.subtaskId === "quill")?.state).toBe("done");
   });
+
+  it("recovers Scout's research artifact from its output when the lane never emitted one (#1536)", async () => {
+    const { channel, events } = makeChannel();
+    const scoutBrief =
+      "Acme sells compliance workflow software to RevOps leaders. Strongest tension: audit prep is " +
+      "manual spreadsheet chaos. First move: a proof-led audit-trail campaign.";
+
+    /**
+     * The live failure: Scout exits 0 and posts its insight brief, but never emits the structured
+     * scout_research/brand_voice ::team-event:: — so nothing registers and every downstream lane blocks
+     * on "missing required artifact". This launcher reproduces exactly that: it emits NO artifacts, but
+     * exposes the lane's work product so the coordinator can recover a schema-valid fallback.
+     */
+    class ProseOnlyLauncher implements TeamLauncher {
+      launched: LaunchInput[] = [];
+      launch(input: LaunchInput): Promise<{ id: string }> {
+        this.launched.push(input);
+        return Promise.resolve({ id: `s-${input.agentMemberId}` });
+      }
+      join(): Promise<void> {
+        return Promise.resolve();
+      }
+      workProduct(id: string): Promise<string | null> {
+        // Only Scout produced a substantive brief; downstream lanes have none yet.
+        return Promise.resolve(id === "s-mem_scout" ? scoutBrief : null);
+      }
+    }
+
+    const launcher = new ProseOnlyLauncher();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 2,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam({
+      workspaceId: "ws_1",
+      channelId: "ch_1",
+      createdByMemberId: "mem_human",
+      teamRunId: "run_1",
+      subtasks: [
+        {
+          subtaskId: "scout",
+          agentMemberId: "mem_scout",
+          task: "research acme.test",
+          branch: "b-scout",
+          phase: 1,
+          producesArtifacts: ["scout_research", "brand_voice"],
+        },
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft channel-native assets",
+          branch: "b-quill",
+          phase: 2,
+          requiresArtifacts: ["scout_research", "brand_voice"],
+        },
+      ],
+    });
+
+    // Scout is done (its produced artifacts were recovered, not left missing).
+    expect(result.results.find((r) => r.subtaskId === "scout")?.ok).toBe(true);
+
+    // Both recoverable research artifacts were registered, authored by Scout, flagged as recovered,
+    // and carry Scout's own words — not empty placeholders.
+    const recovered = events().filter(
+      (e) => e.subtaskId === "scout" && e.detail?.recoveredArtifact === true,
+    );
+    const recoveredKinds = recovered.map((e) => e.artifact?.kind).sort();
+    expect(recoveredKinds).toEqual(["brand_voice", "scout_research"]);
+    const research = recovered.find((e) => e.artifact?.kind === "scout_research");
+    expect(research?.artifact?.kind === "scout_research" && research.artifact.siteSummary).toContain(
+      "Acme sells compliance workflow software",
+    );
+
+    // The whole point: Quill was NOT blocked on a missing artifact — it launched and completed.
+    expect(launcher.launched.some((l) => l.agentMemberId === "mem_quill")).toBe(true);
+    expect(result.results.find((r) => r.subtaskId === "quill")?.ok).toBe(true);
+    expect(result.results.find((r) => r.subtaskId === "quill")?.error).toBeUndefined();
+  });
 });
