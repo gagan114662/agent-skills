@@ -244,6 +244,13 @@ const URL_RE = /https?:\/\/[^\s)]+/gi;
 const URL_SENTINEL = String.fromCharCode(0xf8ff);
 const URL_PLACEHOLDER_RE = new RegExp(URL_SENTINEL + "(\\d+)" + URL_SENTINEL, "g");
 
+// A developer's machine name must never reach a customer (#1595/#1598): an mDNS `.local` hostname
+// (`gagans-MacBook-Pro.local`) or the auto-generated Apple device name it derives from. URLs are masked
+// first, so a real link to a `*.local` host survives; a bare hostname token in prose is dropped. Scrubbed
+// inside scrubInternalJargon so the per-line sweep (sanitizeBodyLines) strips it from every kept line.
+const HOSTNAME_RE =
+  /\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.local\b|\b[a-z0-9-]+-(?:MacBook(?:-(?:Pro|Air))?|iMac|Mac-(?:mini|Studio|Pro))\b/gi;
+
 export function scrubInternalJargon(text: string): string {
   const urls: string[] = [];
   const masked = text.replace(URL_RE, (url) => {
@@ -257,6 +264,7 @@ export function scrubInternalJargon(text: string): string {
     .replace(/_\([a-z]+\)_/gi, "") // "_(spawn)_"
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "") // UUID
     .replace(/\bipop-[a-z0-9-]+\b/gi, "") // worktree branch token
+    .replace(HOSTNAME_RE, "") // developer machine name (#1595/#1598)
     .replace(/\s{2,}/g, " ")
     .replace(/\s+([.,;:])/g, "$1")
     .trim();
