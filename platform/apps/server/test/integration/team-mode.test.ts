@@ -72,6 +72,7 @@ async function startApp(
     logger: silentLogger,
   });
   // #1568: the status endpoints serve the provider-agnostic runtime status. These Codex-path tests
+  // pin the CODEX provider (so explicit codex subtasks are honored, not clamped to claude-code) and
   // inject the codex doctor fixture as BOTH the codex gate source and the provider-level status, so
   // they keep exercising the legacy Codex posture end-to-end.
   const app = buildApp({
@@ -80,6 +81,7 @@ async function startApp(
     codexSubscription,
     ...(codexSubscription
       ? {
+          runtimeProvider: "codex" as const,
           runtimeStatus: {
             status: async (workspaceId: string, memberId: string) => {
               const status = await codexSubscription.status(workspaceId, memberId);

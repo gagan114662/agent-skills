@@ -25,6 +25,7 @@ import {
   type LineDecoder,
 } from "./stream-json.js";
 import { isHarnessKind, type HarnessKind, type HarnessSpec } from "./harness.js";
+import type { RuntimeProvider } from "./provider.js";
 import { PreflightError, type PreflightReport } from "./preflight.js";
 import type { SecretsResolver } from "./secrets-resolver.js";
 import { resolveEgressPolicy } from "./egress-allowlist.js";
@@ -185,6 +186,15 @@ export interface SessionManagerDeps {
     kind: HarnessKind,
     opts?: { fast?: boolean },
   ) => { command: string; args: string[]; decode: LineDecoder };
+  /**
+   * Runtime provider clamp (#1568): when `claude`, a per-session `codex` harness override is REMAPPED
+   * to `claude-code` at the launch boundary — the defense-in-depth that catches every residual codex
+   * spawn path (an old cached web bundle still sending `harness: "codex"`, a retried session row
+   * persisted before the provider switch, an automation with a stored pick). Live QA 2026-07-02
+   * caught exactly this: `codex_core::shell_snapshot` errors after the switch. Unset or `codex` ⇒
+   * overrides are honored verbatim (legacy behavior; unit tests unchanged).
+   */
+  provider?: RuntimeProvider;
   caps: ResourceCaps;
   logger: SessionLogger;
   /**
@@ -689,13 +699,18 @@ export class SessionManager {
    * {@link HarnessKindError} for an unknown kind, or an override the manager has no resolver for.
    */
   private resolveHarness(
-    override?: HarnessKind,
+    requested?: HarnessKind,
     fast?: boolean,
   ): {
     kind: HarnessKind;
     spec: HarnessSpec;
     decode: LineDecoder;
   } {
+    // #1568 provider clamp: on a Claude deployment, a `codex` override is remapped to `claude-code`
+    // BEFORE resolution — so a stale pick (old web bundle, persisted session row, automation) can
+    // never spawn the codex CLI. The clamped kind is what gets persisted on the session row.
+    const override =
+      requested === "codex" && this.deps.provider === "claude" ? "claude-code" : requested;
     const defaultKind = this.deps.harnessKind ?? "demo";
     const defaultDecode: LineDecoder =
       this.deps.decodeOutput ?? ((line) => ({ display: [line], raw: null }));
