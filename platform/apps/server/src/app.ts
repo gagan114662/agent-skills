@@ -80,6 +80,7 @@ import { createCodexSubscriptionStatusProvider } from "./runtime/codex-subscript
 import {
   createClaudeRuntimeStatusProvider,
   createRuntimeStatusProvider,
+  type RuntimeProvider,
   type RuntimeStatusProvider,
 } from "./runtime/provider.js";
 import { createAgentAuthResolver } from "./runtime/auth-default.js";
@@ -435,6 +436,8 @@ export interface BuildAppOptions {
   codexSubscription?: CodexSubscriptionStatusProvider;
   /** #1568 provider-agnostic runtime readiness: tests inject deterministic status; default derives from the provider. */
   runtimeStatus?: RuntimeStatusProvider;
+  /** #1568 runtime provider override: tests pin `codex` to exercise the legacy posture; default env-resolved. */
+  runtimeProvider?: RuntimeProvider;
   /** Tests may inject a CloudWorkspaceManager (#55); defaults to the repo-backed one. */
   cloudWorkspaceManager?: CloudWorkspaceManager;
   /**
@@ -775,7 +778,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // secrets path uses — subscription first (workspace connect or the deployment env
   // CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`), ANTHROPIC_API_KEY as optional fallback —
   // so the status and the launch can never disagree. Modes only; values never leave the secrets path.
-  const runtimeProvider = env.agent.provider;
+  const runtimeProvider = opts.runtimeProvider ?? env.agent.provider;
   const statusAuthResolver = createAgentAuthResolver();
   const claudeRuntimeStatus = createClaudeRuntimeStatusProvider({
     resolveAuthMode: async (workspaceId) => {

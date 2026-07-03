@@ -347,6 +347,9 @@ export function createDefaultSessionManager(
     harness: { command: env.harnessCommand, args: env.harnessArgs },
     // #50: the env default harness kind (persisted when a launch makes no per-session override).
     harnessKind: env.harness,
+    // #1568: the resolved runtime provider — on a Claude deployment the manager clamps any residual
+    // `codex` per-session override to `claude-code` at the launch boundary.
+    provider: env.provider,
     // #81: decode the selected harness's stdout. `claude-code` emits stream-json (one JSON event per
     // line), `codex` emits codex `exec --json` events — without this the channel shows raw JSON
     // blobs; `demo` is a verbatim pass-through.
