@@ -47,7 +47,7 @@ describe("subagent tool scope (#59)", () => {
       );
       expect(env.AGENT_APPEND_SYSTEM_PROMPT).toBe("You review code.");
       // #250: the read-only web tools are unioned in so a scoped session can always reach the live web.
-      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep,WebFetch,WebSearch");
+      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep,WebFetch,WebSearch,ToolSearch");
     });
 
     it("does not duplicate web tools a persona already declares (#250)", () => {
@@ -55,7 +55,7 @@ describe("subagent tool scope (#59)", () => {
         { systemPrompt: "Audit.", model: null },
         ["Read", "WebFetch", "WebSearch"],
       );
-      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,WebFetch,WebSearch");
+      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,WebFetch,WebSearch,ToolSearch");
     });
 
     it("omits AGENT_ALLOWED_TOOLS when the resolved scope is empty (unscoped ⇒ all built-ins, web incl.)", () => {
@@ -71,7 +71,7 @@ describe("subagent tool scope (#59)", () => {
         [],
         ["Task"],
       );
-      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep,WebFetch,WebSearch,Task");
+      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep,WebFetch,WebSearch,ToolSearch,Task");
     });
 
     it("does not duplicate an extra tool a persona already declares (#319)", () => {
@@ -81,12 +81,12 @@ describe("subagent tool scope (#59)", () => {
         [],
         ["Task"],
       );
-      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Task,WebFetch,WebSearch");
+      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Task,WebFetch,WebSearch,ToolSearch");
     });
 
     it("leaves the surface unchanged when extraTools is empty (default OFF, #319)", () => {
       const env = personaHarnessEnv({ systemPrompt: "Draft.", model: null }, ["Read", "Grep"], [], []);
-      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep,WebFetch,WebSearch");
+      expect(env.AGENT_ALLOWED_TOOLS).toBe("Read,Grep,WebFetch,WebSearch,ToolSearch");
     });
 
     it("does NOT provision extra tools onto an UNSCOPED session (no --allowedTools to add to, #319)", () => {

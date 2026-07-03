@@ -55,3 +55,20 @@ Claude models (#246), but nothing let the deployment *default* to it.
   an actionable 409/connect prompt.
 - Send/spend approval-gate behavior is untouched — this ADR changes model execution auth only.
 - Rollback: set `AGENT_RUNTIME_PROVIDER=codex` (no code change).
+
+## Live-QA follow-ups (2026-07-02, post-deploy)
+
+First real Claude team run reasoned well but every subtask ended `blocked`. Two fixes:
+
+1. **Headless research tools**: `--allowedTools` is Claude Code's permission PRE-APPROVAL list, and a
+   headless `-p` run cannot answer prompts — unapproved tools are DENIED. Unscoped (no-persona)
+   sessions emitted no `--allowedTools`, so WebFetch/WebSearch were denied and agents could not
+   research. The full claude-code spec now always emits the flag: a persona ceiling verbatim, else
+   the read-only `HEADLESS_RESEARCH_TOOLS` default (`WebFetch,WebSearch,ToolSearch`); persona
+   ceilings union the same trio (`WEB_TOOLS`). Data-only tools — never an actuator; send/spend gates
+   unchanged.
+2. **Provider clamp**: residual `codex_core::shell_snapshot` errors traced to spawn paths still
+   carrying an explicit `codex` pick (old cached web bundles posting `harness: "codex"`, session
+   rows persisted before the switch). On a Claude deployment, both the team-run route and the
+   SessionManager launch boundary now REMAP `codex` → `claude-code`; the clamped kind is what is
+   gated, spawned, and persisted. `AGENT_RUNTIME_PROVIDER=codex` keeps codex picks verbatim.

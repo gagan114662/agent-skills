@@ -67,6 +67,15 @@ export interface HarnessOptions {
 
 const DEMO: HarnessSpec = { command: "bash", args: ["scripts/agent-harness-demo.sh"] };
 
+/**
+ * The read-only research tools every full headless `claude-code` session pre-approves (#1568):
+ * WebFetch/WebSearch return text (never an actuator) and ToolSearch only loads deferred tool schemas.
+ * Safe to grant unconditionally — same reasoning as `subagents/scope.ts` WEB_TOOLS, which unions them
+ * into every persona ceiling. This is the default when no persona ceiling (`AGENT_ALLOWED_TOOLS`) is
+ * set, so an unscoped team-run session can research instead of being permission-denied headless.
+ */
+export const HEADLESS_RESEARCH_TOOLS = ["WebFetch", "WebSearch", "ToolSearch"] as const;
+
 export function parseHarnessKind(value: string | undefined): HarnessKind {
   return isHarnessKind(value) ? value : "demo";
 }
@@ -93,14 +102,23 @@ export function harnessSpec(kind: HarnessKind, opts: HarnessOptions = {}): Harne
   // hostile — cannot inject shell.
   //
   // Subagent personas (#59) thread their system prompt + allowed-tools ceiling the SAME way — as env,
-  // never argv — using bash `${VAR:+word}` expansion: the flag appears only when the var is set and
-  // non-empty, and the value is a double-quoted env reference (injection-safe like $AGENT_TASK).
-  // Non-persona sessions leave these unset, so the flags vanish and behavior is unchanged.
+  // never argv — using bash `${VAR:+word}`/`${VAR:-default}` expansion: the value is a double-quoted
+  // env reference (injection-safe like $AGENT_TASK).
+  //
+  // #1568 live-QA fix: `--allowedTools` is Claude Code's permission PRE-APPROVAL list, and a headless
+  // `-p` run cannot answer permission prompts — an unapproved tool is simply DENIED. Full team-run
+  // sessions launch without a persona ceiling (AGENT_ALLOWED_TOOLS unset), so WebFetch/WebSearch were
+  // denied and agents could not research (prod QA: all 4 subtasks blocked; one shelled out to
+  // `node fetch` as a workaround). The flag is now ALWAYS emitted: a persona ceiling wins verbatim
+  // when set; otherwise the read-only {@link HEADLESS_RESEARCH_TOOLS} default is pre-approved so a
+  // headless session can research. This only ADDS pre-approval — edit permissions still come from
+  // `--permission-mode acceptEdits`, and the fast spec's explicit no-tools `--allowedTools ""` is
+  // untouched.
   const persona =
     ` ` +
     `\${AGENT_APPEND_SYSTEM_PROMPT:+--append-system-prompt "$AGENT_APPEND_SYSTEM_PROMPT"}` +
     ` ` +
-    `\${AGENT_ALLOWED_TOOLS:+--allowedTools "$AGENT_ALLOWED_TOOLS"}`;
+    `--allowedTools "\${AGENT_ALLOWED_TOOLS:-${HEADLESS_RESEARCH_TOOLS.join(",")}}"`;
   // Per-agent skills (#155) ride the SAME env-not-argv contract: `AGENT_SKILLS` carries the comma-joined
   // skill ids the session loads (set by `subagents/scope.ts personaHarnessEnv`). It is passed through the
   // job env (not interpolated into argv), so the runtime/provisioner can materialize the agent's versioned

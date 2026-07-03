@@ -752,6 +752,39 @@ describe("SessionManager — per-session harness selection (#50)", () => {
     expect(store.created?.command).toBe("bash");
   });
 
+  it("#1568 provider clamp: on a claude deployment a codex override is remapped to claude-code", async () => {
+    const runtime = new CapturingRuntime();
+    const store = new FakeStore();
+    const poster = new FakePoster(store);
+    const manager = new SessionManager({
+      runtime,
+      store,
+      poster,
+      secrets: new Secrets({}),
+      harness: { command: "claude-bin", args: ["--default"] },
+      harnessKind: "claude-code",
+      provider: "claude",
+      decodeOutput: harnessLineDecoder("claude-code"),
+      harnessOverrides: (kind) => {
+        const specs: Record<string, { command: string; args: string[] }> = {
+          demo: { command: "bash", args: ["scripts/agent-harness-demo.sh"] },
+          "claude-code": { command: "claude-bin", args: ["--default"] },
+          codex: { command: "codex-bin", args: ["--legacy"] },
+        };
+        return { ...specs[kind], decode: harnessLineDecoder(kind as Parameters<typeof harnessLineDecoder>[0]) };
+      },
+      caps: caps(),
+      logger: silentLogger,
+    });
+    // A residual codex pick (stale web bundle / persisted row / automation) spawns CLAUDE, not codex:
+    // the runtime receives the claude-code spec and the row persists the CLAMPED kind.
+    const session = await manager.launch({ ...launch, harness: "codex" });
+    await manager.join(session.id);
+    expect(runtime.job?.command).toBe("claude-bin");
+    expect(runtime.job?.args).toEqual(["--default"]);
+    expect(store.created?.harness).toBe("claude-code");
+  });
+
   it("uses the codex decoder for a codex-overridden session (readable channel output)", async () => {
     const events =
       [

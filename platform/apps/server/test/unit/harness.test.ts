@@ -73,8 +73,9 @@ describe("harness selection (#50)", () => {
     // The persona system prompt is appended only when AGENT_APPEND_SYSTEM_PROMPT is set, via bash
     // ${VAR:+...} expansion of a double-quoted env reference (injection-safe like $AGENT_TASK).
     expect(cmd).toContain('${AGENT_APPEND_SYSTEM_PROMPT:+--append-system-prompt "$AGENT_APPEND_SYSTEM_PROMPT"}');
-    // The allowed-tools ceiling is passed only when AGENT_ALLOWED_TOOLS is set.
-    expect(cmd).toContain('${AGENT_ALLOWED_TOOLS:+--allowedTools "$AGENT_ALLOWED_TOOLS"}');
+    // #1568: the allowlist flag is ALWAYS emitted — persona ceiling verbatim when set, else the
+    // read-only research default so a headless session can WebFetch/WebSearch/ToolSearch.
+    expect(cmd).toContain('--allowedTools "${AGENT_ALLOWED_TOOLS:-WebFetch,WebSearch,ToolSearch}"');
     // Still a single bash -lc argument — persona config cannot reach the command line literally.
     expect(harnessSpec).toHaveLength(1);
   });
@@ -136,7 +137,7 @@ describe("fast claude-code turn (#417 — the reload.team speed gap)", () => {
       `--output-format stream-json --verbose --permission-mode acceptEdits ` +
       `\${ANTHROPIC_MODEL:+--model "$ANTHROPIC_MODEL"} ` +
       `\${AGENT_APPEND_SYSTEM_PROMPT:+--append-system-prompt "$AGENT_APPEND_SYSTEM_PROMPT"} ` +
-      `\${AGENT_ALLOWED_TOOLS:+--allowedTools "$AGENT_ALLOWED_TOOLS"}` +
+      `--allowedTools "\${AGENT_ALLOWED_TOOLS:-WebFetch,WebSearch,ToolSearch}"` +
       ` < /dev/null`;
     expect(harnessSpec("claude-code").args[1]).toBe(FULL);
     expect(harnessSpec("claude-code", { fast: false }).args[1]).toBe(FULL);

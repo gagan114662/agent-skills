@@ -178,6 +178,14 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
       const phase = parseSubtaskPhase(s.phase);
       const timeoutMs = parseSubtaskTimeoutMs(s.timeoutMs);
       const maxAttempts = parseSubtaskMaxAttempts(s.maxAttempts);
+      // #1568 provider clamp (live QA: residual `codex_core` spawns after the Claude switch): on a
+      // Claude deployment an explicit `codex` pick — e.g. an old cached web bundle still sending
+      // `harness: "codex"` — is remapped to `claude-code` up front, so the gate below checks Claude
+      // readiness and the coordinator/manager spawn the Claude CLI. The clamped value is what the
+      // response payload reports. `AGENT_RUNTIME_PROVIDER=codex` keeps codex picks verbatim.
+      const requestedHarness = isHarnessKind(s.harness) ? s.harness : undefined;
+      const preferredHarness =
+        requestedHarness === "codex" && provider === "claude" ? "claude-code" : requestedHarness;
       subtasks.push({
         subtaskId: newId(),
         agentMemberId: target.id,
@@ -188,7 +196,7 @@ export async function teamRoutes(app: FastifyInstance, opts: TeamRoutesOptions):
         maxAttempts,
         ...(producesArtifacts.length > 0 ? { producesArtifacts } : {}),
         ...(requiresArtifacts.length > 0 ? { requiresArtifacts } : {}),
-        preferredHarness: isHarnessKind(s.harness) ? s.harness : undefined,
+        preferredHarness,
       });
     }
 
