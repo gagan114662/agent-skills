@@ -72,3 +72,15 @@ First real Claude team run reasoned well but every subtask ended `blocked`. Two 
    rows persisted before the switch). On a Claude deployment, both the team-run route and the
    SessionManager launch boundary now REMAP `codex` → `claude-code`; the clamped kind is what is
    gated, spawned, and persisted. `AGENT_RUNTIME_PROVIDER=codex` keeps codex picks verbatim.
+3. **Default-kind root clamp (third round)**: after the override clamps shipped, `codex_core`
+   errors STILL appeared — the override clamp never covered the DEFAULT harness. A stale explicit
+   `AGENT_HARNESS=codex` in the deployment env (the pre-switch posture) beat the provider preset,
+   so every NO-override launch (persona/mention briefs, fast coordination turns) spawned codex.
+   env.ts now clamps the resolved default at the root (every consumer — default spec, manager
+   default kind, mention auth gate, preflight — reads the clamped value), and `resolveHarness`
+   clamps its default kind too (rebuilding the spec through the override resolver when the clamp
+   changes it), so even a directly-built manager cannot spawn codex. The
+   `test/unit/no-codex-spawn.test.ts` sweep pins the invariant: with a poisoned codex default and
+   provider=claude, no request kind × fast combination ever hands the runtime a codex command, and
+   persisted rows record the clamped kind. Owner cleanup (optional): remove the stale
+   `AGENT_HARNESS` Fly secret — the clamp makes it inert either way.
