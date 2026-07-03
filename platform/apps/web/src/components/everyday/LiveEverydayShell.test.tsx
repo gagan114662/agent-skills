@@ -5,6 +5,7 @@ import type { ConnectionView } from "../../api/types.js";
 import {
   LiveEverydayShell,
   liveEverydayDataFromState,
+  liveRunSupersedesFirstRun,
   withLiveRoomSessions,
 } from "./LiveEverydayShell.js";
 import { EVERYDAY } from "../../brand.js";
@@ -336,6 +337,86 @@ describe("LiveEverydayShell (#1181)", () => {
     );
 
     expect(data.fleetPaused).toBe(false);
+  });
+
+  it("hides the stale onboarding first-run receipt once a live run supersedes it (GAP-4)", () => {
+    const firstRun = {
+      stage: "agent_result" as const,
+      target: "mathematricks.com",
+      finding: "your hero buries the offer below the fold.",
+      artifactTitle: "site-read receipt",
+      artifactSummary: "hero rewrite + launch-week post plan",
+      receipt: "send/spend gates active",
+      recordedAtMs: Date.UTC(2026, 6, 3, 14, 3),
+    };
+    const baseState = {
+      activeChannelId: "c1",
+      directory: {},
+      liveSessions: [],
+      approvals: { requests: [] },
+      identity: { memberId: "m1", workspaceId: "ws1", displayName: "Ada" },
+    };
+
+    // Idle room (no live run yet): the onboarding first-run receipt still surfaces — unchanged behavior.
+    const idle = liveEverydayDataFromState(
+      { ...baseState, messagesByChannel: {} } as unknown as AppState,
+      firstRun,
+    );
+    expect(
+      idle.transparency.some((entry) =>
+        entry.action.includes("recorded first result for mathematricks.com"),
+      ),
+    ).toBe(true);
+
+    // A live run has posted real room activity: the stale "2:03 PM …" receipt must NOT overlay live work.
+    const live = liveEverydayDataFromState(
+      {
+        ...baseState,
+        messagesByChannel: {
+          c1: [
+            makeMessage({
+              id: "live-1",
+              channelId: "c1",
+              authorMemberId: "ag-scout",
+              body: "found three warm angles in your niche.",
+            }),
+          ],
+        },
+      } as unknown as AppState,
+      firstRun,
+    );
+    expect(live.transparency.some((entry) => entry.action.includes("recorded first result"))).toBe(
+      false,
+    );
+    expect(
+      live.thread.some(
+        (entry) =>
+          "text" in entry &&
+          typeof entry.text === "string" &&
+          entry.text.includes("recorded first result"),
+      ),
+    ).toBe(false);
+    // The room shows the live run's own activity instead of the frozen onboarding snapshot.
+    expect(live.thread.length).toBeGreaterThan(0);
+  });
+
+  it("liveRunSupersedesFirstRun fires on a live message OR an attached session, not on an idle room (GAP-4)", () => {
+    const base = { activeChannelId: "c1", directory: {}, liveSessions: [], messagesByChannel: {} };
+    expect(liveRunSupersedesFirstRun({ ...base } as unknown as AppState)).toBe(false);
+    expect(
+      liveRunSupersedesFirstRun({
+        ...base,
+        messagesByChannel: { c1: [makeMessage({ id: "m", channelId: "c1", body: "live line" })] },
+      } as unknown as AppState),
+    ).toBe(true);
+    expect(
+      liveRunSupersedesFirstRun({
+        ...base,
+        liveSessions: [
+          { id: "s1", channelId: "c1", agentMemberId: "a", status: "running", agentStatus: "idle" },
+        ],
+      } as unknown as AppState),
+    ).toBe(true);
   });
 
   it("opens the Telegram bot start-link flow from the live everyday connector", async () => {
