@@ -193,3 +193,73 @@ describe("everyday-agent-text — session terminal + noise", () => {
     expect(parseTeamEvent(TEAM_EVENT_MARKER + ' {"foo":"bar"}')).toBeNull();
   });
 });
+
+describe("everyday-agent-text — multi-line bodies (#1598/#1595)", () => {
+  // #393 posts an agent's raw result tail as a chat message. That tail is multi-line and can carry an
+  // inline `::team-event::` marker, a session terminal line, a codex log, or a bare UUID on a line that
+  // is NOT the first — the customer must still never see any of it, while genuine copy is kept.
+  it("strips an inline team-event marker that is not the first line, keeping the real copy", () => {
+    const body =
+      "Here's the launch angle I'd lead with: your setup takes 30 seconds, not 30 minutes.\n" +
+      '::team-event:: {"teamRunId":"tr-secret","subtaskId":"s-secret","agentMemberId":"member-019eb7","kind":"milestone","summary":"draft ready","branch":"ipop-scout-x","createdAt":"2026-07-01T00:00:00.000Z"}';
+    const out = customerVisibleAgentText(body);
+    expect(out).toContain("your setup takes 30 seconds");
+    expect(out).not.toContain(TEAM_EVENT_MARKER);
+    expect(out).not.toContain("tr-secret");
+    expect(out).not.toContain("s-secret");
+    expect(out).not.toContain("member-019eb7");
+    expect(out).not.toContain("teamRunId");
+    expect(out).not.toContain("subtaskId");
+    expect(out).not.toContain("agentMemberId");
+  });
+
+  it("drops an embedded session terminal / exit line that is not the first line", () => {
+    const body =
+      "The hero rewrite is ready for you to review.\n" +
+      "✅ session completed (exit 0)\n" +
+      "`session failed · exit n/a`";
+    const out = customerVisibleAgentText(body);
+    expect(out).toContain("The hero rewrite is ready");
+    expect(out).not.toMatch(/exit|session (?:completed|failed)|✅/);
+  });
+
+  it("drops embedded codex runtime log lines that are not the first line", () => {
+    const body =
+      "Drafted three subject lines for the launch email.\n" +
+      "2026-07-01T12:00:00.000Z ERROR codex_core::shell_snapshot: snapshot failed\n" +
+      "thread 'tokio-runtime-worker' panicked at 'boom'";
+    const out = customerVisibleAgentText(body);
+    expect(out).toContain("Drafted three subject lines");
+    expect(out).not.toContain("codex_core::shell_snapshot");
+    expect(out).not.toContain("panicked");
+  });
+
+  it("scrubs a bare UUID / branch token that appears on a later line", () => {
+    const body =
+      "Shipped the pricing tweak.\n" +
+      "run 019eb7aa-1111-2222-3333-444455556666 on ipop-operator-pricing";
+    const out = customerVisibleAgentText(body);
+    expect(out).toContain("Shipped the pricing tweak");
+    expect(out).not.toMatch(/019eb7aa-1111/);
+    expect(out).not.toContain("ipop-operator-pricing");
+  });
+
+  it("degrades to the placeholder when a body is nothing but narration + internal noise", () => {
+    const body =
+      "🔧 node -e \"fetch('https://ipop.ai/')\"\n" +
+      '::team-event:: {"teamRunId":"tr1","subtaskId":"s1","agentMemberId":"a1","kind":"started","summary":"x","branch":null,"createdAt":"2026-07-01T00:00:00.000Z"}\n' +
+      "codex_core::shell_snapshot: WARN retrying";
+    const out = customerVisibleAgentText(body);
+    expect(out).toBe(EVERYDAY.thread.internalToolActivity);
+    expect(out).not.toContain("teamRunId");
+    expect(out).not.toContain(TEAM_EVENT_MARKER);
+  });
+
+  it("keeps a genuine multi-paragraph human message intact", () => {
+    const body =
+      "Two ideas for the launch:\n" +
+      "1. Lead with the 30-second setup.\n" +
+      "2. Show the before/after dashboard.";
+    expect(customerVisibleAgentText(body)).toBe(body);
+  });
+});

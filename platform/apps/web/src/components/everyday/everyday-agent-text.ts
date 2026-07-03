@@ -263,17 +263,54 @@ export function scrubInternalJargon(text: string): string {
   return scrubbed.replace(URL_PLACEHOLDER_RE, (_match, index: string) => urls[Number(index)] ?? "");
 }
 
-/** True when a raw body is a tool invocation or runtime/log line that must never reach a customer. */
-export function looksLikeInternalActivity(text: string): boolean {
-  const firstLine = firstCustomerVisibleLine(text)
+// A line that is nothing but a session terminal / exit footer — either the backticked `session … · exit …`
+// footer, a bare `session <verb> · exit …`, or a lone `(exit 0)` / `exit n/a`. Matched per-line so an
+// embedded terminal line inside a longer deliverable body is dropped, not just a whole-body one.
+const SESSION_FOOTER_LINE_RE =
+  /^`?\s*session\s+\w+\s*·\s*exit\b|^\(?\s*exit\s+(?:code\s+)?(?:\d+|n\/a)\)?\s*`?\s*$/i;
+
+/**
+ * True when a SINGLE body line is internal plumbing a customer must never read: an inline
+ * `::team-event::` marker, a session terminal line (`✅ session completed`, `❌ …`, a `· exit …`
+ * footer), a runtime/log line (codex tracing, a panic, a leading log level), a shell/tool invocation,
+ * or script framing. Blank lines are NOT noise (they preserve paragraph breaks in real copy).
+ */
+export function isInternalNoiseLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed === "") return false;
+  if (trimmed.includes(TEAM_EVENT_MARKER)) return true;
+  if (SESSION_SUCCESS_RE.test(trimmed) || SESSION_FAILURE_RE.test(trimmed)) return true;
+  if (SESSION_FOOTER_LINE_RE.test(trimmed)) return true;
+  const stripped = trimmed
     .replace(/^\$\s*/, "")
     .replace(/^🔧\s*/, "")
     .replace(/^tool\s*:\s*/i, "");
   return (
-    INTERNAL_TOOL_COMMAND_RE.test(firstLine) ||
-    RUNTIME_LOG_RE.test(firstLine) ||
-    /^(?:script completed|wall time|output:|script error:)/i.test(firstLine)
+    INTERNAL_TOOL_COMMAND_RE.test(stripped) ||
+    RUNTIME_LOG_RE.test(stripped) ||
+    /^(?:script completed|wall time|output:|script error:)/i.test(stripped)
   );
+}
+
+/** True when a raw body is a tool invocation or runtime/log line that must never reach a customer. */
+export function looksLikeInternalActivity(text: string): boolean {
+  return isInternalNoiseLine(firstCustomerVisibleLine(text));
+}
+
+/**
+ * Sweep an arbitrary multi-line body into customer-safe text: drop every internal-noise line (rule 1–3
+ * & 5 leak classes can appear on ANY line of a #393 deliverable tail, not just the first), scrub the
+ * telemetry tokens (exit codes, UUIDs, worktree branch tokens) out of what survives, and collapse only
+ * the blank edges left behind — interior blank lines are preserved so genuine multi-paragraph copy keeps
+ * its shape. Returns the brand-voice placeholder when nothing customer-facing is left.
+ */
+function sanitizeBodyLines(text: string): string {
+  const kept = text
+    .split(/\r?\n/)
+    .filter((line) => !isInternalNoiseLine(line))
+    .map((line) => (line.trim() === "" ? "" : scrubInternalJargon(line)));
+  const joined = kept.join("\n").replace(/^\n+|\n+$/g, "");
+  return joined.trim() === "" ? EVERYDAY.thread.internalToolActivity : joined;
 }
 
 /** True when a body is the runtime's success terminal line (`✅ session completed (exit 0)`) — pure plumbing. */
@@ -302,20 +339,25 @@ export function rewriteSessionFailure(text: string): string | null {
 }
 
 /**
- * Map any agent/team body to the text a customer may see. Never returns raw JSON, exit codes, or log output:
- *  - a team-event → its friendly, named, first-person line,
- *  - a `::team-event::` blob we could not parse → the brand-voice placeholder,
- *  - the runtime success terminal line (`✅ session completed (exit 0)`) → the placeholder (callers may drop it),
- *  - the runtime failure terminal line → honest plain language, no class tag or exit footer,
- *  - tool/runtime/log noise → the placeholder,
- *  - anything else → the text unchanged.
+ * Map any agent/team body to the text a customer may see. Never returns raw JSON, exit codes, UUIDs, or
+ * log output — and (#1598) it sweeps EVERY line, not just the first, because a #393 deliverable tail is
+ * multi-line and can carry an inline `::team-event::` marker, a session terminal line, a codex log, or a
+ * bare UUID on a line that is not the first:
+ *  - a clean whole-body team-event → its friendly, named, first-person line,
+ *  - a whole-body `::team-event::` blob we could not parse → the brand-voice placeholder,
+ *  - the runtime failure terminal line (first line `❌ …`) → honest plain language, no class tag / exit footer,
+ *  - anything else → the body with every internal-noise line dropped and telemetry tokens scrubbed,
+ *    degrading to the placeholder when nothing customer-facing survives.
  */
 export function customerVisibleAgentText(text: string): string {
   const event = parseTeamEvent(text);
   if (event) return teamEventFriendlyLine(event);
   if (text.trimStart().startsWith(TEAM_EVENT_MARKER)) return EVERYDAY.thread.internalToolActivity;
-  if (isSessionOutcomeSuccessLine(text)) return EVERYDAY.thread.internalToolActivity;
   const failure = rewriteSessionFailure(text);
   if (failure) return failure;
-  return looksLikeInternalActivity(text) ? EVERYDAY.thread.internalToolActivity : text;
+  // A body whose FIRST line is a tool/runtime/script invocation is a plumbing dump — its continuation
+  // lines (heredoc bodies, script output) belong to it, so collapse the whole thing rather than keeping
+  // individually-innocuous fragments. Real copy leads a #393 deliverable tail, so it is swept line-by-line.
+  if (looksLikeInternalActivity(text)) return EVERYDAY.thread.internalToolActivity;
+  return sanitizeBodyLines(text);
 }
