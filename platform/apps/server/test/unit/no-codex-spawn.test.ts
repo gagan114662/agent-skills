@@ -175,6 +175,25 @@ describe("no codex spawn under the claude provider (#1568 regression)", () => {
     expect(JSON.stringify({ command: agent.harnessCommand, args: agent.harnessArgs })).not.toMatch(/codex/i);
   });
 
+  it("env root clamp: a stale AGENT_HARNESS_CMD/ARGS from the codex posture is dropped when the clamp fires", () => {
+    // Live QA round 4 (2026-07-03): the residual `codex_core::shell_snapshot` leak. #1593 clamped the
+    // harness KIND (AGENT_HARNESS=codex → claude-code) but left its SIBLINGS — an explicit
+    // AGENT_HARNESS_CMD/AGENT_HARNESS_ARGS from the same pre-switch codex posture — untouched, so every
+    // no-override launch still ran the codex binary under a claude-code label. The clamp must drop them.
+    const agent = loadEnv({
+      AGENT_HARNESS: "codex",
+      AGENT_HARNESS_CMD: "codex",
+      AGENT_HARNESS_ARGS: JSON.stringify(["exec", "$AGENT_TASK", "--json"]),
+    } as NodeJS.ProcessEnv).agent;
+    expect(agent.provider).toBe("claude");
+    expect(agent.harness).toBe("claude-code");
+    // The default command + args every no-override launch runs must be the CLAUDE spec — never codex.
+    expect(JSON.stringify({ command: agent.harnessCommand, args: agent.harnessArgs })).not.toMatch(
+      /codex/i,
+    );
+    expect(JSON.stringify(agent.harnessArgs)).toMatch(/claude/i);
+  });
+
   it("env root clamp: AGENT_RUNTIME_PROVIDER=codex keeps an explicit codex harness verbatim (legacy posture)", () => {
     const agent = loadEnv({
       AGENT_HARNESS: "codex",

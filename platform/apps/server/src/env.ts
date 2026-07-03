@@ -583,8 +583,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       // fast turns) still spawned the codex CLI and leaked `codex_core::shell_snapshot` errors.
       // `AGENT_RUNTIME_PROVIDER=codex` keeps an explicit codex harness verbatim.
       const requestedHarness = parseHarnessKind(source.AGENT_HARNESS ?? preset.harness);
-      const harness: HarnessKind =
-        requestedHarness === "codex" && provider === "claude" ? "claude-code" : requestedHarness;
+      const harnessClampedFromCodex = requestedHarness === "codex" && provider === "claude";
+      const harness: HarnessKind = harnessClampedFromCodex ? "claude-code" : requestedHarness;
       if (production && harness === "demo" && !flag(source.RELOAD_ALLOW_DEMO_HARNESS_IN_PROD)) {
         prodConfigError("AGENT_HARNESS=demo is not allowed in production; set a real harness or RELOAD_ALLOW_DEMO_HARNESS_IN_PROD=1");
       }
@@ -609,8 +609,21 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
         provider,
         runtime: parseRuntime(source.AGENT_RUNTIME ?? preset.runtime),
         harness,
-        harnessCommand: source.AGENT_HARNESS_CMD ?? spec.command,
-        harnessArgs: parseHarnessArgs(source.AGENT_HARNESS_ARGS, spec.args),
+        // #1568 root clamp (live QA 2026-07-03, round 4): when the codex→claude-code clamp fires, an
+        // explicit AGENT_HARNESS_CMD/AGENT_HARNESS_ARGS left in the deployment env belonged to the
+        // pre-switch codex posture — the SIBLING of the stale `AGENT_HARNESS=codex` #1593 already caught.
+        // The earlier round clamped only the harness KIND (and the spec built from it), so a no-override
+        // launch STILL ran the codex binary these overrides point at, under a claude-code label — the
+        // residual `codex_core::shell_snapshot` leak (and, downstream, why no run reached a clean
+        // completion: codex never emits claude's terminal `result` event, so the deliverable/approval
+        // card never fires). Drop the stale overrides and run the clamped claude-code spec.
+        // `AGENT_RUNTIME_PROVIDER=codex` never clamps, so a real codex deployment keeps its command verbatim.
+        harnessCommand: harnessClampedFromCodex
+          ? spec.command
+          : (source.AGENT_HARNESS_CMD ?? spec.command),
+        harnessArgs: harnessClampedFromCodex
+          ? [...spec.args]
+          : parseHarnessArgs(source.AGENT_HARNESS_ARGS, spec.args),
         caps: {
           wallClockMs: num(source.AGENT_WALLCLOCK_MS, 600_000),
           // #394: 120s idle was reaping THINKING agents mid-reason (a long Opus reasoning pass emits no
