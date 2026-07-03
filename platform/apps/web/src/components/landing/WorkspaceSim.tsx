@@ -1,6 +1,7 @@
 /**
- * The hero's full workspace simulation (#165) — the landing's centrepiece. Not a card or a marketing
- * mock: a faithful, static-data render of the ipop console. On the left, the complete sidebar (pinned
+ * The hero's full workspace simulation (#165) — the landing's centrepiece. An illustrative, faithful
+ * SAMPLE render of the ipop console built from static `brand.ts` data (labelled "sample" in the title bar
+ * and aria-label so it is never mistaken for a live feed — de-theater audit). On the left, the sidebar (pinned
  * channels, every department channel coloured from the spectrum, and DMs, with the ⌘K search). On the
  * right, a whole day's timeline in #seo that auto-plays one entry at a time and loops — a brief, an
  * audit with receipts, a draft, a QA pass, an approval card, the human's "ship it", a queued send, and
@@ -35,7 +36,7 @@ export function WorkspaceSim(): React.JSX.Element {
   const shown = useStagedReveal(WORKSPACE.timeline.length, STEP_MS, reduced);
 
   return (
-    <div className="simwin" role="img" aria-label={`A live look inside the ${BRAND.name} workspace`}>
+    <div className="simwin" role="img" aria-label={`A sample look inside the ${BRAND.name} workspace`}>
       <div className="simwin__chrome" aria-hidden="true">
         <span className="simwin__dot simwin__dot--r" />
         <span className="simwin__dot simwin__dot--y" />

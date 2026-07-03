@@ -31,6 +31,7 @@ import {
   PAYWALL,
   BRAND_ASSETS,
   WORKSPACE,
+  MISSION_CONTROL,
   STORY,
   FAQ,
   APPROVAL_POLICY,
@@ -661,4 +662,35 @@ describe("no hardcoded brand strings in product chrome", () => {
       expect(src).toMatch(/from "(?:\.\.\/)+brand\.js"/);
     });
   }
+});
+
+describe("homepage sample vignettes are labelled honestly, not as a live feed (de-theater audit)", () => {
+  // The hero workspace sim and the mission-control strip render STATIC brand.ts data. They must never imply
+  // they are a real-time reading — the label a visitor sees has to say "sample", and the implied-live copy
+  // ("Live now" / "…what it's spending — live") must be gone. This guards a regression back into theater.
+  const IMPLIED_LIVE = /\blive now\b|\bwhat it's spending — live\b|a live look inside/i;
+
+  it("the mission-control strip is labelled a Sample, not Live", () => {
+    expect(MISSION_CONTROL.liveLabel.toLowerCase()).toContain("sample");
+    expect(MISSION_CONTROL.liveLabel).not.toMatch(/\blive\b/i);
+    expect(MISSION_CONTROL.subtitle.toLowerCase()).toContain("sample");
+    expect(MISSION_CONTROL.subtitle).not.toMatch(IMPLIED_LIVE);
+  });
+
+  it("the workspace sim title names it a sample", () => {
+    expect(WORKSPACE.workspaceName.toLowerCase()).toContain("sample");
+  });
+
+  it("no landing sim source calls its static data a live feed", () => {
+    for (const rel of ["components/landing/WorkspaceSim.tsx", "components/landing/Vignettes.tsx"]) {
+      const codeLines = readFileSync(resolve(HERE, rel), "utf8")
+        .split("\n")
+        .filter((line) => {
+          const t = line.trim();
+          return !t.startsWith("*") && !t.startsWith("//") && !t.startsWith("/*");
+        })
+        .join("\n");
+      expect(codeLines).not.toMatch(IMPLIED_LIVE);
+    }
+  });
 });
