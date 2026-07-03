@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { TeamEvent } from "@reload/shared";
 import { encodeTeamEvent, tryParseTeamEvent } from "../../src/team/protocol.js";
-import { TeamCoordinator, type TeamLauncher } from "../../src/team/coordinator.js";
+import { TeamCoordinator, buildTeamRunTimeline, type TeamLauncher } from "../../src/team/coordinator.js";
 import { TeamChannel } from "../../src/team/channel.js";
 import type { LaunchInput, SessionLogger } from "../../src/runtime/manager.js";
 
@@ -1169,5 +1169,93 @@ describe("TeamCoordinator (#TeamMode — parallel run, concurrency cap, failure 
     expect(result.results[0]?.visibilityDegraded).toBe(true);
     const seen = await coordinator.readEvents("ch_1");
     expect(seen.map((e) => e.kind)).toEqual(["queued", "started", "done"]);
+  });
+
+  it("advances Scout -> done -> Quill, which emits at least one named content draft (#1536)", async () => {
+    const { channel, events } = makeChannel();
+
+    /**
+     * A launcher that emits each lane's promised artifacts the moment its session runs, so the
+     * end-to-end handoff is observable: Scout (phase 1) posts scout_research + brand_voice, then
+     * Quill (phase 2) — which the coordinator only launches once those artifacts exist — posts a
+     * real draft_set. This is the exact green path #1536 requires: a brief in yields a named
+     * content draft out, not just a research receipt.
+     */
+    class EmittingLauncher implements TeamLauncher {
+      launched: LaunchInput[] = [];
+      async launch(input: LaunchInput): Promise<{ id: string }> {
+        this.launched.push(input);
+        const emit =
+          input.agentMemberId === "mem_scout"
+            ? [scoutResearchEvent, brandVoiceEvent]
+            : input.agentMemberId === "mem_quill"
+              ? [draftSetEvent]
+              : [];
+        for (const event of emit) {
+          await channel.postEvent({ workspaceId: input.workspaceId, channelId: input.channelId, event });
+        }
+        return { id: `s${this.launched.length}` };
+      }
+      join(): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+
+    const launcher = new EmittingLauncher();
+    const coordinator = new TeamCoordinator({
+      launcher,
+      channel,
+      maxConcurrency: 2,
+      logger: silentLogger,
+      now: () => "2026-06-08T00:00:00.000Z",
+    });
+
+    const result = await coordinator.runTeam({
+      workspaceId: "ws_1",
+      channelId: "ch_1",
+      createdByMemberId: "mem_human",
+      teamRunId: "run_1",
+      subtasks: [
+        {
+          subtaskId: "scout",
+          agentMemberId: "mem_scout",
+          task: "research acme.test",
+          branch: "b-scout",
+          phase: 1,
+          producesArtifacts: ["scout_research", "brand_voice"],
+        },
+        {
+          subtaskId: "quill",
+          agentMemberId: "mem_quill",
+          task: "draft channel-native assets",
+          branch: "b-quill",
+          phase: 2,
+          requiresArtifacts: ["scout_research", "brand_voice"],
+          producesArtifacts: ["draft_set"],
+        },
+      ],
+    });
+
+    const scout = result.results.find((r) => r.subtaskId === "scout");
+    const quill = result.results.find((r) => r.subtaskId === "quill");
+
+    // Scout completed and handed off — it was not left stuck "working".
+    expect(scout?.ok).toBe(true);
+    // Quill actually launched (it was NOT skipped for a missing upstream artifact) and completed.
+    expect(launcher.launched.some((l) => l.agentMemberId === "mem_quill")).toBe(true);
+    expect(quill?.ok).toBe(true);
+
+    // The run produced at least one real, named content draft — not just a research receipt.
+    const drafts = events().flatMap((e) =>
+      e.artifact?.kind === "draft_set" ? e.artifact.drafts : [],
+    );
+    expect(drafts.length).toBeGreaterThanOrEqual(1);
+    expect(drafts[0]?.title).toBeTruthy();
+    expect(drafts[0]?.format).toBeTruthy();
+
+    // The timeline reflects the ordered handoff: Scout done, then Quill done.
+    const timeline = buildTeamRunTimeline("run_1", events());
+    expect(timeline.subtasks.find((s) => s.subtaskId === "scout")?.state).toBe("done");
+    expect(timeline.subtasks.find((s) => s.subtaskId === "quill")?.state).toBe("done");
   });
 });
