@@ -4380,6 +4380,14 @@ select:focus-visible {
 .pricing-card--current {
   border-color: var(--online);
 }
+/* #1550: the tier a `?plan=<key>` deep link preselects gets a visible ring so the dashboard upsell lands
+   somewhere obvious. A box-shadow ring only — never a transform — so it can't displace the CTA hit-box. */
+.pricing-card--selected {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 16px 40px -18px var(--accent);
+}
 .pricing-card__ribbon {
   position: absolute;
   top: -11px;
