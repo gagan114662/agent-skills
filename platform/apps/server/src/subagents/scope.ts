@@ -25,8 +25,13 @@ const TOOL_RE = /^[A-Za-z0-9_-]+$/;
  * (an SEO audit, competitor research) can never silently fail just because a persona's declared tool
  * ceiling omitted them. An unscoped session already inherits all of Claude Code's built-ins (these
  * included), so this only ever ADDS capability — it can never remove a tool a session had before.
+ *
+ * `ToolSearch` (#1568) rides along: it only loads deferred tool SCHEMAS (discovery, no actuator), and
+ * a headless session that cannot answer permission prompts needs it pre-approved to use deferred
+ * tools at all. Unscoped sessions get the same trio via the harness default
+ * (`runtime/harness.ts` HEADLESS_RESEARCH_TOOLS).
  */
-export const WEB_TOOLS = ["WebFetch", "WebSearch"] as const;
+export const WEB_TOOLS = ["WebFetch", "WebSearch", "ToolSearch"] as const;
 
 /**
  * The subagent-**spawn** tool surface (#319). `Task` is Claude Code's own built-in tool for delegating a
