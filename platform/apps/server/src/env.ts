@@ -573,7 +573,18 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       const preset = profilePreset(profile, provider);
       // Select the coding-agent harness (#50). Default `demo` keeps tests/CI free of model spend;
       // `claude-code` runs the real Claude Code CLI. Explicit AGENT_HARNESS_CMD/ARGS still override.
-      const harness = parseHarnessKind(source.AGENT_HARNESS ?? preset.harness);
+      //
+      // #1568 root clamp (live QA 2026-07-02, third round): on a Claude deployment (`provider` =
+      // claude, the default) a `codex` DEFAULT harness — typically a stale explicit
+      // `AGENT_HARNESS=codex` left in the deployment env from the pre-switch posture — is remapped
+      // to `claude-code` HERE, at the root every consumer reads (the default spec below, the
+      // SessionManager's default kind, the mention auth gate, preflight). The earlier clamps only
+      // covered explicit per-session overrides, so every no-override launch (persona/mention briefs,
+      // fast turns) still spawned the codex CLI and leaked `codex_core::shell_snapshot` errors.
+      // `AGENT_RUNTIME_PROVIDER=codex` keeps an explicit codex harness verbatim.
+      const requestedHarness = parseHarnessKind(source.AGENT_HARNESS ?? preset.harness);
+      const harness: HarnessKind =
+        requestedHarness === "codex" && provider === "claude" ? "claude-code" : requestedHarness;
       if (production && harness === "demo" && !flag(source.RELOAD_ALLOW_DEMO_HARNESS_IN_PROD)) {
         prodConfigError("AGENT_HARNESS=demo is not allowed in production; set a real harness or RELOAD_ALLOW_DEMO_HARNESS_IN_PROD=1");
       }

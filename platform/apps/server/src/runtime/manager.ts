@@ -707,21 +707,32 @@ export class SessionManager {
     decode: LineDecoder;
   } {
     // #1568 provider clamp: on a Claude deployment, a `codex` override is remapped to `claude-code`
-    // BEFORE resolution — so a stale pick (old web bundle, persisted session row, automation) can
-    // never spawn the codex CLI. The clamped kind is what gets persisted on the session row.
-    const override =
-      requested === "codex" && this.deps.provider === "claude" ? "claude-code" : requested;
-    const defaultKind = this.deps.harnessKind ?? "demo";
+    // BEFORE resolution — so a stale pick (old web bundle, persisted session row via the retry route,
+    // automation) can never spawn the codex CLI. The clamped kind is what gets persisted on the
+    // session row.
+    const clamp = (kind: HarnessKind): HarnessKind =>
+      kind === "codex" && this.deps.provider === "claude" ? "claude-code" : kind;
+    const override = requested === undefined ? undefined : clamp(requested);
+    // The DEFAULT kind is clamped too (live QA, third round): a deployment whose env still pins a
+    // codex default (stale AGENT_HARNESS=codex) would otherwise spawn codex on every NO-override
+    // launch — persona/mention briefs, fast turns — which is exactly the residual
+    // `codex_core::shell_snapshot` leak. env.ts clamps at the root; this catches directly-built
+    // managers. When the clamp CHANGES the default kind, the pre-built default spec (a codex spec)
+    // is unusable, so the spec is rebuilt through the override resolver.
+    const rawDefaultKind = this.deps.harnessKind ?? "demo";
+    const defaultKind = clamp(rawDefaultKind);
+    const defaultKindClamped = defaultKind !== rawDefaultKind;
     const defaultDecode: LineDecoder =
       this.deps.decodeOutput ?? ((line) => ({ display: [line], raw: null }));
     if (override === undefined || override === defaultKind) {
       // A fast turn (#417) needs a DIFFERENT spec (cheap model + no tools), so it cannot reuse the
       // pre-built default `{ command, args }` — it must go through the override resolver to rebuild the
-      // spec with `fast`. When not fast (the default), the pre-built default spec is used unchanged, so
-      // production is byte-for-byte today's behavior. If no resolver is wired (unit tests with only the
-      // legacy default harness), a fast request degrades to the default spec — never a hard failure.
-      if (fast && this.deps.harnessOverrides) {
-        const resolved = this.deps.harnessOverrides(defaultKind, { fast: true });
+      // spec with `fast`. The same applies when the default kind was clamped (the pre-built spec is
+      // for the WRONG harness). When neither applies, the pre-built default spec is used unchanged,
+      // so production is byte-for-byte today's behavior. If no resolver is wired (unit tests with only
+      // the legacy default harness), the request degrades to the default spec — never a hard failure.
+      if ((fast || defaultKindClamped) && this.deps.harnessOverrides) {
+        const resolved = this.deps.harnessOverrides(defaultKind, { fast });
         return {
           kind: defaultKind,
           spec: { command: resolved.command, args: resolved.args },
